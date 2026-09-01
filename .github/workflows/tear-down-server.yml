@@ -1,0 +1,98 @@
+name: Tear down server
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: Name of the branch whose deployed environments should be torn down
+        required: true
+        type: string
+      compose_file:
+        description: Filename of the Docker Compose file that was copied into each deployment's directory (DEPLOY_FILE_ROOT/<env>/<branch>) at deploy time
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  # Root directory on the self-hosted/deploy host where each env/branch
+  # pair's generated .env file and any other per-deployment state lives.
+  DEPLOY_FILE_ROOT: ${{ vars.DEPLOY_FILE_ROOT }}
+
+jobs:
+  teardown:
+    name: Tear down branch environment
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, staging, demo]
+    # Matches the per-branch, per-env group the deploy workflow locks on, so
+    # a branch delete queues behind (or after) any in-flight deploy of that
+    # same branch+env instead of racing it for the same DEPLOY_DIR.
+    concurrency:
+      group: deploy-server-${{ inputs.branch }}-${{ matrix.env }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, Linux, docker]
+    timeout-minutes: 10
+    steps:
+      - name: Compute branch slug and project name
+        id: vars
+        env:
+          BRANCH_NAME: ${{ inputs.branch }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          branch_slug="$(echo "${BRANCH_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+          repo_slug="$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+
+          # An empty slug would make deploy_dir/conf_file collapse onto a
+          # shared parent path (e.g. DEPLOY_FILE_ROOT/ENV_NAME/), turning the
+          # rm -rf below into a wipe of every branch's env instead of just
+          # this one, so refuse to proceed rather than risk that.
+          if [ -z "${branch_slug}" ] || [ -z "${repo_slug}" ]; then
+            echo "::error::Computed an empty slug (branch_slug='${branch_slug}', repo_slug='${repo_slug}') from branch='${BRANCH_NAME}' repo='${GITHUB_REPOSITORY}'"
+            exit 1
+          fi
+
+          echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
+          echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
+
+      # The branch may not have been deployed to this particular env, so
+      # only tear down when its deploy dir actually exists on disk.
+      - name: Remove branch environment
+        env:
+          BRANCH_SLUG: ${{ steps.vars.outputs.branch_slug }}
+          REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
+          ENV_NAME: ${{ matrix.env }}
+          COMPOSE_FILE: ${{ inputs.compose_file }}
+        run: |
+          deploy_dir="${DEPLOY_FILE_ROOT}/${ENV_NAME}/${BRANCH_SLUG}"
+          if [ -d "${deploy_dir}" ]; then
+            if ! docker compose \
+              --project-name "${REPO_SLUG}-${ENV_NAME}-${BRANCH_SLUG}" \
+              --env-file "${deploy_dir}/.env" \
+              -f "${deploy_dir}/${COMPOSE_FILE}" \
+              down -v --remove-orphans; then
+              echo "::error::docker compose down failed for ${deploy_dir}; leaving it in place for investigation/retry"
+              exit 1
+            fi
+            rm -rf "${deploy_dir}"
+          fi
+
+      # always() so this still runs (and clears stale routing) even when the
+      # docker teardown step above failed, but gated on the slug step having
+      # actually produced non-empty slugs, so a cancelled/failed "Compute
+      # branch slug" run can't fall through with an empty BRANCH_SLUG here.
+      - name: Remove reverse proxy server config
+        if: always() && steps.vars.outputs.branch_slug != '' && steps.vars.outputs.repo_slug != ''
+        env:
+          NGINX_CONF_ROOT: ${{ vars.NGINX_CONF_ROOT }}
+          BRANCH_SLUG: ${{ steps.vars.outputs.branch_slug }}
+          REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
+          ENV_NAME: ${{ matrix.env }}
+        run: |
+          conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}_${ENV_NAME}_${BRANCH_SLUG}.conf"
+          if [ -f "${conf_file}" ]; then
+            sudo rm -f "${conf_file}"
+            sudo nginx -t
+            sudo nginx -s reload
+          fi
