@@ -88,6 +88,16 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Write summary
+        run: |
+          {
+            echo "### ${{ matrix.image_name }}"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   publish-latest:
     name: Promote ${{ matrix.image_name }} to latest
     needs: build-image
@@ -124,3 +134,13 @@ jobs:
 
       - name: Point latest tag at the commit-tagged image
         run: docker buildx imagetools create --tag ${{ steps.dest.outputs.tags }} ${{ steps.source.outputs.tags }}
+
+      - name: Write summary
+        run: |
+          {
+            echo "### ${{ matrix.image_name }} (latest)"
+            echo
+            echo '```'
+            echo "${{ steps.dest.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
