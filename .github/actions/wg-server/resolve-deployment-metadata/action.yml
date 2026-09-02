@@ -1,0 +1,100 @@
+name: Resolve deployment metadata
+description: Compute the server/migration image tags, the source branch the server image was built from, the branch/repo slugs and Compose project name, and the deploy directory for this deployment
+
+inputs:
+  registry:
+    description: Container registry hostname
+    default: ghcr.io
+    required: true
+  tag:
+    description: Tag of the server/migration images to deploy
+    required: true
+  env_name:
+    description: Environment being deployed into
+    required: true
+  deploy_file_root:
+    description: Root directory on the deploy host where each env/branch pair's deployment state lives
+    required: true
+
+outputs:
+  server_tag:
+    description: Fully qualified server image tag
+    value: ${{ steps.server_meta.outputs.tags }}
+  migration_tag:
+    description: Fully qualified migration image tag
+    value: ${{ steps.migration_meta.outputs.tags }}
+  branch_name:
+    description: Source branch the server image was built from
+    value: ${{ steps.source.outputs.branch_name }}
+  branch_slug:
+    description: URL-safe slug of the source branch
+    value: ${{ steps.vars.outputs.branch_slug }}
+  repo_slug:
+    description: URL-safe slug of the repository name
+    value: ${{ steps.vars.outputs.repo_slug }}
+  project_name:
+    description: Docker Compose project name for this env/branch deployment
+    value: ${{ steps.vars.outputs.project_name }}
+  deploy_file_dir:
+    description: Directory on the deploy host holding this env/branch pair's deployment state
+    value: ${{ steps.vars.outputs.deploy_file_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute server image tag
+      id: server_meta
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+      with:
+        images: ${{ inputs.registry }}/${{ github.repository }}/server
+        tags: type=raw,value=${{ inputs.tag }}
+
+    - name: Compute migration image tag
+      id: migration_meta
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+      with:
+        images: ${{ inputs.registry }}/${{ github.repository }}/server-migration
+        tags: type=raw,value=${{ inputs.tag }}
+
+    # The chosen tag (e.g. "main-latest") need not match the branch this
+    # workflow is dispatched from, so the source branch is read back from
+    # the image's own label rather than assumed from github.ref_name.
+    - name: Read source branch from image label
+      id: source
+      shell: bash
+      env:
+        SERVER_IMAGE: ${{ steps.server_meta.outputs.tags }}
+      run: |
+        docker pull "${SERVER_IMAGE}"
+        branch_name="$(docker inspect --format '{{ if .Config.Labels }}{{ index .Config.Labels "org.opencontainers.image.ref.name" }}{{ end }}' "${SERVER_IMAGE}")"
+        if [ -z "${branch_name}" ]; then
+          branch_name="main"
+        fi
+        echo "branch_name=${branch_name}" >> "$GITHUB_OUTPUT"
+
+    - name: Compute branch slug, project name, and deploy directory
+      id: vars
+      shell: bash
+      env:
+        BRANCH_NAME: ${{ steps.source.outputs.branch_name }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        ENV_NAME: ${{ inputs.env_name }}
+        DEPLOY_FILE_ROOT: ${{ inputs.deploy_file_root }}
+      run: |
+        branch_slug="$(echo "${BRANCH_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+        repo_slug="$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+
+        # An empty slug would make deploy_file_dir/project_name collapse onto
+        # a path/name shared by every other branch with an empty slug,
+        # letting unrelated deployments silently overwrite each other's
+        # compose files and fight over the same Compose project, so refuse
+        # to proceed rather than risk that.
+        if [ -z "${branch_slug}" ] || [ -z "${repo_slug}" ]; then
+          echo "::error::Computed an empty slug (branch_slug='${branch_slug}', repo_slug='${repo_slug}') from branch='${BRANCH_NAME}' repo='${GITHUB_REPOSITORY}'"
+          exit 1
+        fi
+
+        echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
+        echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
+        echo "project_name=${repo_slug}-${ENV_NAME}-${branch_slug}" >> "$GITHUB_OUTPUT"
+        echo "deploy_file_dir=${DEPLOY_FILE_ROOT}/${ENV_NAME}/${branch_slug}" >> "$GITHUB_OUTPUT"

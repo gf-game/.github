@@ -1,0 +1,126 @@
+name: Deploy
+description: Deploy the server via Docker Compose, record the assigned host ports, and configure the nginx reverse proxy for this env/branch deployment
+
+inputs:
+  deploy_file_dir:
+    description: Directory on the deploy host holding this env/branch pair's deployment state
+    required: true
+  compose_file:
+    description: Path to the docker-compose.yml file to deploy
+    required: true
+  project_name:
+    description: Docker Compose project name for this env/branch deployment
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  repo_slug:
+    description: URL-safe slug of the repository name
+    required: true
+  env_name:
+    description: Environment being deployed into
+    required: true
+  nginx_server_config_template:
+    description: printf template for the nginx server block config
+    required: true
+  server_domain_suffix:
+    description: Domain suffix appended to the branch/env/repo subdomain
+    required: true
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    required: true
+
+outputs:
+  server_port:
+    description: Host port the server container is published on
+    value: ${{ steps.ports.outputs.server_port }}
+  db_port:
+    description: Host port the db container is published on
+    value: ${{ steps.ports.outputs.db_port }}
+  redis_port:
+    description: Host port the redis container is published on
+    value: ${{ steps.ports.outputs.redis_port }}
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy with Docker Compose
+      shell: bash
+      env:
+        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+        PROJECT_NAME: ${{ inputs.project_name }}
+      run: |
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DEPLOY_FILE_DIR}/.env" \
+          -f "${COMPOSE_FILE}" \
+          pull
+
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DEPLOY_FILE_DIR}/.env" \
+          -f "${COMPOSE_FILE}" \
+          up -d --remove-orphans
+
+    - name: Record assigned host ports
+      id: ports
+      shell: bash
+      env:
+        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+        PROJECT_NAME: ${{ inputs.project_name }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+      run: |
+        server_port="$(docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DEPLOY_FILE_DIR}/.env" \
+          -f "${COMPOSE_FILE}" \
+          port server 8080 | cut -d: -f2)"
+
+        db_port="$(docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DEPLOY_FILE_DIR}/.env" \
+          -f "${COMPOSE_FILE}" \
+          port db 5432 | cut -d: -f2)"
+
+        redis_port="$(docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DEPLOY_FILE_DIR}/.env" \
+          -f "${COMPOSE_FILE}" \
+          port redis 6379 | cut -d: -f2)"
+
+        echo "${server_port}" > "${DEPLOY_FILE_DIR}/server_port"
+        echo "${db_port}" > "${DEPLOY_FILE_DIR}/db_port"
+        echo "${redis_port}" > "${DEPLOY_FILE_DIR}/redis_port"
+
+        echo "server_port=${server_port}" >> "$GITHUB_OUTPUT"
+        echo "db_port=${db_port}" >> "$GITHUB_OUTPUT"
+        echo "redis_port=${redis_port}" >> "$GITHUB_OUTPUT"
+
+        echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable \
+          on host port \`${server_port}\` (db on \`${db_port}\`, redis on \`${redis_port}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+    # One nginx server block per env/branch pair, so each deployment gets
+    # its own subdomain proxying to its own assigned host port.
+    - name: Configure reverse proxy server
+      shell: bash
+      env:
+        NGINX_SERVER_CONFIG_TEMPLATE: ${{ inputs.nginx_server_config_template }}
+        SERVER_DOMAIN_SUFFIX: ${{ inputs.server_domain_suffix }}
+        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        SERVER_PORT: ${{ steps.ports.outputs.server_port }}
+      run: |
+        server_domain="${BRANCH_SLUG}.${ENV_NAME}.${REPO_SLUG}.${SERVER_DOMAIN_SUFFIX}"
+        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}_${ENV_NAME}_${BRANCH_SLUG}.conf"
+
+        printf "${NGINX_SERVER_CONFIG_TEMPLATE}\n" "${server_domain}" "${SERVER_PORT}" | sudo tee "${conf_file}" > /dev/null
+
+        sudo nginx -t
+        sudo nginx -s reload
+
+        echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable at \`${server_domain}\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,56 @@
+name: Prepare deployment files
+description: Extract the docker-compose.yml from the server image and write the branch .env file
+
+inputs:
+  server_tag:
+    description: Fully qualified server image tag
+    required: true
+  migration_tag:
+    description: Fully qualified migration image tag
+    required: true
+  deploy_file_dir:
+    description: Directory on the deploy host holding this env/branch pair's deployment state
+    required: true
+  env_file_body:
+    description: Additional KEY=VALUE lines appended to the .env file, after SERVER_IMG/MIGRATION_IMG
+    required: true
+
+outputs:
+  compose_file:
+    description: Path to the extracted docker-compose.yml file
+    value: ${{ steps.compose.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Extract docker-compose.yml from server image
+      id: compose
+      shell: bash
+      env:
+        SERVER_IMAGE: ${{ inputs.server_tag }}
+        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
+      run: |
+        container_id="$(docker create "${SERVER_IMAGE}")"
+        docker cp "${container_id}:/docker-compose.yml" "${DEPLOY_FILE_DIR}/docker-compose.yml"
+        docker rm "${container_id}" > /dev/null
+        echo "file=${DEPLOY_FILE_DIR}/docker-compose.yml" >> "$GITHUB_OUTPUT"
+
+    # Each env/branch pair gets its own .env file and its own
+    # `docker compose -p` project name, so containers/volumes/networks
+    # never collide across branches or environments on the same host.
+    # DB_NAME/DB_USER can stay fixed here because each deployment's `db`
+    # container is already an isolated instance, not a shared database.
+    - name: Write branch env file
+      shell: bash
+      env:
+        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
+        SERVER_IMG: ${{ inputs.server_tag }}
+        MIGRATION_IMG: ${{ inputs.migration_tag }}
+        ENV_FILE_BODY: ${{ inputs.env_file_body }}
+      run: |
+        mkdir -p "${DEPLOY_FILE_DIR}"
+        {
+          echo "SERVER_IMG=${SERVER_IMG}"
+          echo "MIGRATION_IMG=${MIGRATION_IMG}"
+          echo "${ENV_FILE_BODY}"
+        } > "${DEPLOY_FILE_DIR}/.env"
