@@ -30,6 +30,7 @@ runs:
         SERVER_IMAGE: ${{ inputs.server_tag }}
         DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
       run: |
+        mkdir -p "${DEPLOY_FILE_DIR}"
         container_id="$(docker create "${SERVER_IMAGE}")"
         docker cp "${container_id}:/docker-compose.yml" "${DEPLOY_FILE_DIR}/docker-compose.yml"
         docker rm "${container_id}" > /dev/null
