@@ -70,9 +70,21 @@ jobs:
           labels: |
             org.opencontainers.image.ref.name=${{ github.ref_name }}
 
+      - name: Compute buildx cache name
+        id: buildx
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          slugify() {
+            printf '%s' "$1" | tr -c 'a-zA-Z0-9._-' '-'
+          }
+          echo "name=ci-buildx-${{ github.repository_id }}-$(slugify "$DOCKERFILE")-$(slugify "$TARGET")" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
+          name: ${{ steps.buildx.outputs.name }}
           keep-state: true
 
       - name: Log in to GitHub Container Registry
