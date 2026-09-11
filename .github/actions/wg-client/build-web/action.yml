@@ -1,0 +1,193 @@
+name: Build Web Client
+description: Build the Cocos Creator web client and push the resulting image to a container registry
+
+inputs:
+  platform:
+    description: "Build platform"
+    type: string
+    required: true
+  build_env:
+    description: "Target build environment"
+    required: true
+  debug:
+    description: "Build in debug mode"
+    required: true
+  client_dir:
+    description: "Path to the client, relative to the repo root"
+    required: true
+  dockerfile:
+    description: "Path to dockerfile"
+    required: true
+  image_name:
+    description: "Image name (without registry prefix)"
+    required: true
+
+outputs:
+  image_tag:
+    description: "Full image tag of the built client image"
+    value: ${{ steps.meta.outputs.tags }}
+
+runs:
+  using: composite
+  steps:
+    - name: Verify platform
+      shell: bash
+      run: |
+        platform="${{ inputs.platform }}"
+        case "$platform" in
+          web-mobile|web-desktop)
+            echo "Platform '$platform' is valid."
+            ;;
+          *)
+            echo "::error::Invalid platform '$platform'. Expected one of: web-mobile, web-desktop."
+            exit 1
+            ;;
+        esac
+
+    - name: Populate env vars
+      id: env
+      env:
+        REGISTRY: ghcr.io
+      shell: bash
+      run: |
+        echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
+
+    - name: Check out repository
+      uses: actions/checkout@v6.0.3
+      with:
+        persist-credentials: false
+        clean: false
+        lfs: true
+
+    - name: Clean workspace (preserve build caches)
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: git clean -ffdx -e library -e temp -e node_modules
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: npm ci
+
+    - name: Resolve Cocos Creator path
+      id: cocos
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: |
+        ver="$(jq -r '.creator.version' package.json)"
+        echo "exe=C:\\ProgramData\\cocos\\editors\\Creator\\$ver\\CocosCreator.exe" >> "$GITHUB_OUTPUT"
+
+    - name: Build with Cocos Creator CLI
+      id: cocos_build
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: |
+        project_dir="$(pwd -W)"
+        "${{ steps.cocos.outputs.exe }}" \
+          --verbose \
+          --project "$project_dir" \
+          --build "platform=${{ inputs.platform }};debug=${{ inputs.debug }};buildPath=$project_dir/build" \
+          > build.log 2>&1 || true
+
+    - name: Verify Cocos Creator build succeeded
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: |
+        platform="${{ inputs.platform }}"
+        log_path="build.log"
+        pattern="build Task \($platform\) Finished in \(([0-9]+ hr )?([0-9]+ min )?[0-9]+ s\)ms"
+
+        if [ ! -f "$log_path" ]; then
+          echo "::error::build.log not found; Cocos Creator CLI may not have run."
+          exit 1
+        fi
+
+        if ! grep -Eqz "$pattern" "$log_path"; then
+          echo "::error::Build success marker not found in Cocos Creator CLI log for platform '$platform'."
+          echo "----- build.log (tail) -----"
+          tail -n 100 "$log_path"
+          exit 1
+        fi
+
+        echo "Found build success marker for platform '$platform'."
+
+    - name: Upload Cocos build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: cocos-build-log
+        path: ${{ inputs.client_dir }}/build.log
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.env.outputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Compute image tag components
+      id: tag_vars
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      env:
+        RAW_REF: ${{ github.ref_name }}
+        RAW_SHA: ${{ github.sha }}
+        RAW_PLATFORM: ${{ inputs.platform }}
+        RAW_BUILD_ENV: ${{ inputs.build_env }}
+      run: |
+        sanitize() {
+          echo "$1" | sed -E 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]'
+        }
+
+        branch="$(sanitize "$RAW_REF")"
+        short_sha="${RAW_SHA:0:7}"
+        platform="$(sanitize "$RAW_PLATFORM")"
+        build_env="$(sanitize "$RAW_BUILD_ENV")"
+        image_tag="$platform-$build_env-$short_sha"
+
+        echo "branch=$branch" >> "$GITHUB_OUTPUT"
+        echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+        echo "platform=$platform" >> "$GITHUB_OUTPUT"
+        echo "build_env=$build_env" >> "$GITHUB_OUTPUT"
+        echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ steps.env.outputs.registry }}/${{ inputs.image_name }}
+        tags: |
+          type=raw,value=${{ steps.tag_vars.outputs.image_tag }}
+        labels: |
+          org.opencontainers.image.ref.name=${{ steps.tag_vars.outputs.branch }}
+          build-env=${{ steps.tag_vars.outputs.build_env }}
+
+    - name: Build and push client image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.client_dir }}
+        file: ${{ inputs.dockerfile }}
+        build-args: |
+          PLATFORM=${{ steps.tag_vars.outputs.platform }}
+          GIT_BRANCH=${{ steps.tag_vars.outputs.branch }}
+          BUILD_ENV=${{ steps.tag_vars.outputs.build_env }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Publish image tags to job summary
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: |
+        {
+          echo "### Published image tags"
+          echo ""
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && echo "- \`$tag\`"
+          done <<< "${{ steps.meta.outputs.tags }}"
+        } >> "$GITHUB_STEP_SUMMARY"
