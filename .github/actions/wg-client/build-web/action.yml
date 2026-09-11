@@ -1,0 +1,243 @@
+name: Build Web Client
+description: Build the Cocos Creator web client and push the resulting image to a container registry
+
+inputs:
+  platform:
+    description: "Build platform"
+    type: string
+    required: true
+  build_env:
+    description: "Target build environment"
+    required: true
+  debug:
+    description: "Build in debug mode(true/false)"
+    required: true
+  extra_build_config:
+    description: "Extra build config"
+    required: true  
+  client_dir:
+    description: "Path to the client, relative to the repo root"
+    required: true
+  dockerfile:
+    description: "Path to dockerfile"
+    required: true
+  image_name:
+    description: "Image name (without registry prefix)"
+    required: true
+  extra_image_labels:
+    description: "Additional docker image labels (newline-separated key=value pairs)"
+    required: false
+    default: ""
+
+outputs:
+  image_tag:
+    description: "Full image tag of the built client image"
+    value: ${{ steps.meta.outputs.tags }}
+  bundle_artifact_name:
+    description: "Name of the uploaded workflow artifact containing the build output"
+    value: ${{ steps.env.outputs.bundle_artifact_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Verify platform
+      shell: bash
+      run: |
+        platform="${{ inputs.platform }}"
+        case "$platform" in
+          web-mobile|web-desktop)
+            echo "Platform '$platform' is valid."
+            ;;
+          *)
+            echo "::error::Invalid platform '$platform'. Expected one of: web-mobile, web-desktop."
+            exit 1
+            ;;
+        esac
+
+    - name: Compute env variables
+      id: env
+      shell: bash
+      env:
+        REGISTRY: ghcr.io      
+        RAW_REF: ${{ github.ref_name }}
+        RAW_SHA: ${{ github.sha }}
+        RAW_PLATFORM: ${{ inputs.platform }}
+        RAW_BUILD_ENV: ${{ inputs.build_env }}
+        CLIENT_DIR: ${{ inputs.client_dir }}
+      run: |
+        sanitize() {
+          echo "$1" | sed -E 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]'
+        }
+
+        short_sha="${RAW_SHA:0:7}"
+        branch_slug="$(sanitize "$RAW_REF")"
+        platform_slug="$(sanitize "$RAW_PLATFORM")"
+        build_env_slug="$(sanitize "$RAW_BUILD_ENV")"
+        image_tag="$platform_slug-$build_env_slug-$short_sha"
+
+        echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
+        echo "branch_slug=$branch_slug" >> "$GITHUB_OUTPUT"
+        echo "platform_slug=$platform_slug" >> "$GITHUB_OUTPUT"
+        echo "build_env_slug=$build_env_slug" >> "$GITHUB_OUTPUT"        
+        echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
+        echo "bundle_artifact_name=$platform_slug-$build_env_slug-bundle" >> "$GITHUB_OUTPUT"
+        echo "build_path=$CLIENT_DIR/build" >> "$GITHUB_OUTPUT"
+        echo "build_config_path=$CLIENT_DIR/build-config.json" >> "$GITHUB_OUTPUT"
+        echo "build_config_artifact_name=$platform_slug-$build_env_slug-build-config" >> "$GITHUB_OUTPUT"
+        echo "build_log_path=$CLIENT_DIR/build.log" >> "$GITHUB_OUTPUT"
+        echo "build_log_artifact_name=$platform_slug-$build_env_slug-build-log" >> "$GITHUB_OUTPUT"
+        echo "remote_bundle_dir=$CLIENT_DIR/build/$RAW_PLATFORM/remote" >> "$GITHUB_OUTPUT"
+
+    - name: Check out repository
+      uses: actions/checkout@v6.0.3
+      with:
+        persist-credentials: false
+        clean: false
+        lfs: true
+
+    - name: Clean workspace (preserve build caches)
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: git clean -ffdx -e library -e temp -e node_modules
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: npm ci
+
+    - name: Resolve Cocos Creator path
+      id: cocos
+      shell: bash
+      working-directory: ${{ inputs.client_dir }}
+      run: |
+        ver="$(jq -r '.creator.version' package.json)"
+        echo "exe=C:\\ProgramData\\cocos\\editors\\Creator\\$ver\\CocosCreator.exe" >> "$GITHUB_OUTPUT"
+
+    - name: Create Cocos build config
+      id: build_config
+      shell: bash
+      env:
+        DEBUG: ${{ inputs.debug }}
+        PLATFORM: ${{ inputs.platform }}
+        EXTRA_BUILD_CONFIG: ${{ inputs.extra_build_config }}
+        BUILD_PATH: ${{ steps.env.outputs.build_path }}
+        BUILD_CONFIG_PATH: ${{ steps.env.outputs.build_config_path }}
+      run: |
+        jq -n \
+          --arg platform "$PLATFORM" \
+          --arg debug "$(printf '%s' "$DEBUG" | tr '[:upper:]' '[:lower:]')" \
+          --arg build_path "$BUILD_PATH" \
+          --argjson extra "$EXTRA_BUILD_CONFIG" \
+          '{
+            platform: $platform,
+            debug: $debug,
+            buildPath: $build_path
+          } * $extra' > "$BUILD_CONFIG_PATH"
+
+    - name: Upload Cocos build config
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.env.outputs.build_config_artifact_name }}
+        path: ${{ steps.env.outputs.build_config_path }}
+        if-no-files-found: error
+        retention-days: 7
+
+    - name: Build with Cocos Creator CLI
+      id: cocos_build
+      shell: bash
+      env:
+        COCOS_EXE: ${{ steps.cocos.outputs.exe }}
+        PROJECT_PATH: ${{ inputs.client_dir }}
+        BUILD_CONFIG_PATH: ${{ steps.env.outputs.build_config_path }}
+        BUILD_LOG_PATH: ${{ steps.env.outputs.build_log_path }}
+      run: |
+        "$COCOS_EXE" \
+          --verbose \
+          --project "$PROJECT_PATH" \
+          --build "configPath=$BUILD_CONFIG_PATH" \
+          > "$BUILD_LOG_PATH" 2>&1 || true
+
+    - name: Verify Cocos Creator build succeeded
+      shell: bash
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        BUILD_LOG_PATH: ${{ steps.env.outputs.build_log_path }}
+      run: |
+        pattern="build Task \($PLATFORM\) Finished in \(([0-9]+ hr )?([0-9]+ min )?[0-9]+ s\)ms"
+
+        if [ ! -f "$BUILD_LOG_PATH" ]; then
+          echo "::error::$BUILD_LOG_PATH not found; Cocos Creator CLI may not have run."
+          exit 1
+        fi
+
+        if ! grep -Eqz "$pattern" "$BUILD_LOG_PATH"; then
+          echo "::error::Build success marker not found in Cocos Creator CLI log for platform '$PLATFORM'."
+          echo "----- $BUILD_LOG_PATH (tail) -----"
+          tail -n 100 "$BUILD_LOG_PATH"
+          exit 1
+        fi
+
+        echo "Found build success marker for platform '$PLATFORM'."
+
+    - name: Upload Cocos build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.env.outputs.build_log_artifact_name }}
+        path: ${{ steps.env.outputs.build_log_path }}
+        if-no-files-found: error
+        retention-days: 7
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.env.outputs.bundle_artifact_name }}
+        path: ${{ steps.env.outputs.remote_bundle_dir }}
+        retention-days: 7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ steps.env.outputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build docker image metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ steps.env.outputs.registry }}/${{ inputs.image_name }}
+        tags: |
+          type=raw,value=${{ steps.env.outputs.image_tag }}
+        labels: |
+          org.opencontainers.image.ref.name=${{ github.ref_name }}
+          build.platform=${{ inputs.platform }}
+          build.env=${{ inputs.build_env }}
+          build.debug=${{ inputs.debug }}
+          ${{ inputs.extra_image_labels }}
+
+    - name: Build and push client image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.client_dir }}
+        file: ${{ inputs.dockerfile }}
+        build-args: |
+          GIT_BRANCH=${{ steps.env.outputs.branch_slug }}
+          PLATFORM=${{ steps.env.outputs.platform_slug }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Publish image tags to job summary
+      shell: bash
+      run: |
+        {
+          echo "### Published image tags"
+          echo ""
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && echo "- \`$tag\`"
+          done <<< "${{ steps.meta.outputs.tags }}"
+        } >> "$GITHUB_STEP_SUMMARY"
