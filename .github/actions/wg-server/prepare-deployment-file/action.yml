@@ -25,7 +25,7 @@ runs:
   steps:
     - name: Extract docker-compose.yml from server image
       id: compose
-      uses: gf-game/.github/.github/actions/docker/extract-image-file@${{ github.action_ref }}
+      uses: gf-game/.github/.github/actions/docker/extract-image-file@8fe7900c10206ef3b9b56164d8ca35600c0696b7
       with:
         src_image: ${{ inputs.server_tag }}
         src_file_path: /docker-compose.yml
