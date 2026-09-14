@@ -25,22 +25,12 @@ runs:
   steps:
     - name: Extract docker-compose.yml from server image
       id: compose
-      shell: bash
-      env:
-        SERVER_IMAGE: ${{ inputs.server_tag }}
-        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
-      run: |
-        mkdir -p "${DEPLOY_FILE_DIR}"
-        container_id="$(docker create "${SERVER_IMAGE}")"
-        docker cp "${container_id}:/docker-compose.yml" "${DEPLOY_FILE_DIR}/docker-compose.yml"
-        docker rm "${container_id}" > /dev/null
-        echo "file=${DEPLOY_FILE_DIR}/docker-compose.yml" >> "$GITHUB_OUTPUT"
+      uses: ./.github/actions/docker/extract-image-file
+      with:
+        src_image: ${{ inputs.server_tag }}
+        src_file_path: /docker-compose.yml
+        dest_dir: ${{ inputs.deploy_file_dir }}
 
-    # Each env/branch pair gets its own .env file and its own
-    # `docker compose -p` project name, so containers/volumes/networks
-    # never collide across branches or environments on the same host.
-    # DB_NAME/DB_USER can stay fixed here because each deployment's `db`
-    # container is already an isolated instance, not a shared database.
     - name: Write branch env file
       shell: bash
       env:
