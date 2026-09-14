@@ -1,0 +1,36 @@
+name: Extract file from Docker image
+description: Extract a single file from a Docker image into a directory on the host
+
+inputs:
+  src_image:
+    description: Fully qualified image tag to extract the file from
+    required: true
+  src_file_path:
+    description: Path to the file inside the image
+    required: true
+  dest_dir:
+    description: Directory on the host to extract the file into
+    required: true
+
+outputs:
+  file:
+    description: Path to the extracted file on the host
+    value: ${{ steps.extract.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Extract file from image
+      id: extract
+      shell: bash
+      env:
+        SRC_IMAGE: ${{ inputs.src_image }}
+        SRC_FILE_PATH: ${{ inputs.src_file_path }}
+        DEST_DIR: ${{ inputs.dest_dir }}
+      run: |
+        mkdir -p "${DEST_DIR}"
+        container_id="$(docker create "${SRC_IMAGE}")"
+        trap 'docker rm "${container_id}" > /dev/null' EXIT
+        dest_file="${DEST_DIR}/$(basename "${SRC_FILE_PATH}")"
+        docker cp "${container_id}:${SRC_FILE_PATH}" "${dest_file}"
+        echo "file=${dest_file}" >> "$GITHUB_OUTPUT"
