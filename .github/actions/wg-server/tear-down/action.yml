@@ -1,0 +1,80 @@
+name: Tear down deployment
+description: Compute the branch/repo slugs, tear down the branch's Docker Compose stack for an env, and remove its reverse proxy config
+
+inputs:
+  branch:
+    description: Name of the branch whose deployed environment should be torn down
+    required: true
+  compose_file:
+    description: Filename of the Docker Compose file that was copied into the deployment's directory (deploy_file_root/env_name/branch) at deploy time
+    required: true
+  env_name:
+    description: Environment being torn down
+    required: true
+  deploy_file_root:
+    description: Root directory on the deploy host where each env/branch pair's generated .env file and any other per-deployment state lives
+    required: true
+  nginx_conf_root:
+    description: Root directory on the deploy host holding the per-branch reverse proxy config files
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Compute branch slug and project name
+      id: vars
+      shell: bash
+      env:
+        BRANCH_NAME: ${{ inputs.branch }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        branch_slug="$(echo "${BRANCH_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+        repo_slug="$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+
+        if [ -z "${branch_slug}" ] || [ -z "${repo_slug}" ]; then
+          echo "::error::Computed an empty slug (branch_slug='${branch_slug}', repo_slug='${repo_slug}') from branch='${BRANCH_NAME}' repo='${GITHUB_REPOSITORY}'"
+          exit 1
+        fi
+
+        echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
+        echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
+
+    # The branch may not have been deployed to this particular env, so
+    # only tear down when its deploy dir actually exists on disk.
+    - name: Remove branch environment
+      shell: bash
+      env:
+        DEPLOY_FILE_ROOT: ${{ inputs.deploy_file_root }}
+        BRANCH_SLUG: ${{ steps.vars.outputs.branch_slug }}
+        REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+      run: |
+        deploy_dir="${DEPLOY_FILE_ROOT}/${ENV_NAME}/${BRANCH_SLUG}"
+        if [ -d "${deploy_dir}" ]; then
+          if ! docker compose \
+            --project-name "${REPO_SLUG}-${ENV_NAME}-${BRANCH_SLUG}" \
+            --env-file "${deploy_dir}/.env" \
+            -f "${deploy_dir}/${COMPOSE_FILE}" \
+            down -v --remove-orphans; then
+            echo "::error::docker compose down failed for ${deploy_dir}; leaving it in place for investigation/retry"
+            exit 1
+          fi
+          rm -rf "${deploy_dir}"
+        fi
+
+    - name: Remove reverse proxy server config
+      if: always() && steps.vars.outputs.branch_slug != '' && steps.vars.outputs.repo_slug != ''
+      shell: bash
+      env:
+        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
+        BRANCH_SLUG: ${{ steps.vars.outputs.branch_slug }}
+        REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+      run: |
+        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}_${ENV_NAME}_${BRANCH_SLUG}.conf"
+        if [ -f "${conf_file}" ]; then
+          sudo rm -f "${conf_file}"
+          sudo nginx -t
+          sudo nginx -s reload
+        fi
