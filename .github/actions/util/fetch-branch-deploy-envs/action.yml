@@ -1,0 +1,47 @@
+name: Fetch branch deploy environments
+description: Resolve a branch's dev/staging/live deployment environment names from a JSON deployment config, falling back to the '*' entry if the branch isn't listed
+
+inputs:
+  branch:
+    description: Name of the branch to resolve deployment environments for
+    required: true
+  branch_envs:
+    description: JSON configuration of branch deployment environments
+    required: true
+
+outputs:
+  dev_env:
+    description: Name of the branch's 'dev' tier deployment environment, empty if not configured
+    value: ${{ steps.envs.outputs.dev_env }}
+  staging_env:
+    description: Name of the branch's 'staging' tier deployment environment, empty if not configured
+    value: ${{ steps.envs.outputs.staging_env }}
+  live_env:
+    description: Name of the branch's 'live' tier deployment environment, empty if not configured
+    value: ${{ steps.envs.outputs.live_env }}
+
+runs:
+  using: composite
+  steps:
+    - name: Load branch deployment environments
+      id: envs
+      shell: bash
+      env:
+        BRANCH_ENVS: ${{ inputs.branch_envs }}
+        BRANCH: ${{ inputs.branch }}
+      run: |
+        if [ -z "${BRANCH_ENVS}" ]; then
+          echo "::error::Input 'branch_envs' is not set"
+          exit 1
+        fi
+
+        if ! jq -e --arg branch "${BRANCH}" 'has($branch) or has("*")' <<<"${BRANCH_ENVS}" > /dev/null; then
+          echo "::error::No deployment environments configured for branch '${BRANCH}' (and no default '*' entry) in the given deployment configuration"
+          exit 1
+        fi
+
+        for tier in dev staging live; do
+          env_name="$(jq -r --arg branch "${BRANCH}" --arg tier "${tier}" \
+            '(.[$branch] // .["*"]) | map(select(.tier == $tier)) | .[0].env // empty' <<<"${BRANCH_ENVS}")"
+          echo "${tier}_env=${env_name}" >> "$GITHUB_OUTPUT"
+        done
