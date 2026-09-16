@@ -17,16 +17,21 @@ on:
           build stage to build and push
         type: string
         required: true
+      branch:
+        description: Branch to check out and build
+        type: string
+        required: true
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  # Scoped per Dockerfile (not just workflow+ref) so that a caller invoking
-  # this reusable workflow multiple times for different Dockerfiles/images
-  # doesn't serialize unrelated builds against each other.
-  group: build-server-${{ github.workflow }}-${{ github.ref }}-${{ inputs.dockerfile }}
+  # Scoped per Dockerfile and branch (not just workflow+ref) so that a caller
+  # invoking this reusable workflow multiple times for different
+  # Dockerfiles/images/branches doesn't serialize unrelated builds against
+  # each other.
+  group: build-server-${{ github.workflow }}-${{ inputs.branch }}-${{ inputs.dockerfile }}
   cancel-in-progress: false
 
 env:
@@ -59,6 +64,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ inputs.branch }}
           persist-credentials: false
 
       - name: Compute image name and tag
@@ -68,7 +74,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image_name }}
           tags: type=raw,value={{sha}}
           labels: |
-            org.opencontainers.image.ref.name=${{ github.ref_name }}
+            org.opencontainers.image.ref.name=${{ inputs.branch }}
 
       - name: Compute buildx cache name
         id: buildx
