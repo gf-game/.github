@@ -6,7 +6,7 @@ inputs:
     description: Container registry hostname
     default: ghcr.io
     required: true
-  tag:
+  image_version:
     description: Tag of the server/migration images to deploy
     required: true
   env_name:
@@ -47,14 +47,14 @@ runs:
       uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ${{ inputs.registry }}/${{ github.repository }}/server
-        tags: type=raw,value=${{ inputs.tag }}
+        tags: type=raw,value=${{ inputs.image_version }}
 
     - name: Compute migration image tag
       id: migration_meta
       uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ${{ inputs.registry }}/${{ github.repository }}/server-migration
-        tags: type=raw,value=${{ inputs.tag }}
+        tags: type=raw,value=${{ inputs.image_version }}
 
     # The chosen tag (e.g. "main-latest") need not match the branch this
     # workflow is dispatched from, so the source branch is read back from
