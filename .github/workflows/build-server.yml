@@ -17,16 +17,25 @@ on:
           build stage to build and push
         type: string
         required: true
+      branch:
+        description: Branch to check out and build
+        type: string
+        required: true
+    outputs:
+      version:
+        description: Tag with commit sha applied to the built images
+        value: ${{ jobs.validate.outputs.sha }}
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  # Scoped per Dockerfile (not just workflow+ref) so that a caller invoking
-  # this reusable workflow multiple times for different Dockerfiles/images
-  # doesn't serialize unrelated builds against each other.
-  group: build-server-${{ github.workflow }}-${{ github.ref }}-${{ inputs.dockerfile }}
+  # Scoped per Dockerfile and branch (not just workflow+ref) so that a caller
+  # invoking this reusable workflow multiple times for different
+  # Dockerfiles/images/branches doesn't serialize unrelated builds against
+  # each other.
+  group: build-server-${{ github.workflow }}-${{ inputs.branch }}-${{ inputs.dockerfile }}
   cancel-in-progress: false
 
 env:
@@ -36,6 +45,9 @@ jobs:
   validate:
     name: Validate targets input
     runs-on: [self-hosted, Linux, docker]
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      branch_name: ${{ steps.resolve.outputs.branch_name }}
     steps:
       - name: Ensure image_name values are unique
         env:
@@ -46,6 +58,26 @@ jobs:
             echo "::error::Duplicate image_name value(s) in 'targets' input: $duplicates"
             exit 1
           fi
+
+      - name: Resolve branch to a commit sha
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          branch_name="${BRANCH#refs/heads/}"
+
+          sha="$(curl -sSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${branch_name}" \
+            | jq -r '.sha')"
+          if [ -z "$sha" ] || [ "$sha" = "null" ]; then
+            echo "::error::Could not resolve branch '${BRANCH}' to a commit"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
 
   build-image:
     name: Build and push ${{ matrix.target }} image
@@ -59,6 +91,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ needs.validate.outputs.sha }}
           persist-credentials: false
 
       - name: Compute image name and tag
@@ -66,9 +99,9 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image_name }}
-          tags: type=raw,value={{sha}}
+          tags: type=raw,value=${{ needs.validate.outputs.sha }}
           labels: |
-            org.opencontainers.image.ref.name=${{ github.ref_name }}
+            org.opencontainers.image.ref.name=${{ needs.validate.outputs.branch_name }}
 
       - name: Compute buildx cache name
         id: buildx
@@ -116,7 +149,7 @@ jobs:
 
   publish-latest:
     name: Promote ${{ matrix.image_name }} to latest
-    needs: build-image
+    needs: [validate, build-image]
     if: github.ref_type == 'branch'
     runs-on: [self-hosted, Linux, docker]
     timeout-minutes: 5
@@ -129,14 +162,14 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image_name }}
-          tags: type=raw,value={{sha}}
+          tags: type=raw,value=${{ needs.validate.outputs.sha }}
 
       - name: Compute destination tag (latest)
         id: dest
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image_name }}
-          tags: type=raw,value={{branch}}-latest
+          tags: type=raw,value=${{ needs.validate.outputs.branch_name }}-latest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
