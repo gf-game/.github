@@ -17,6 +17,9 @@ inputs:
   nginx_conf_root:
     description: Root directory on the deploy host holding the per-branch reverse proxy config files
     required: true
+  keep_storage:
+    description: Whether server's storage is kept after teardown.
+    required: true
 
 runs:
   using: composite
@@ -49,14 +52,22 @@ runs:
         REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
         ENV_NAME: ${{ inputs.env_name }}
         COMPOSE_FILE: ${{ inputs.compose_file }}
+        KEEP_STORAGE: ${{ inputs.keep_storage }}
       run: |
         deploy_dir="${DEPLOY_FILE_ROOT}/${ENV_NAME}/${BRANCH_SLUG}"
         if [ -d "${deploy_dir}" ]; then
+          down_flags=(--remove-orphans)
+          keep_storage_normalized="${KEEP_STORAGE,,}"
+          keep_storage_normalized="${keep_storage_normalized//[[:space:]]/}"
+          if [ "${keep_storage_normalized}" != "true" ]; then
+            down_flags+=(-v)
+          fi
+
           if ! docker compose \
             --project-name "${REPO_SLUG}-${ENV_NAME}-${BRANCH_SLUG}" \
             --env-file "${deploy_dir}/.env" \
             -f "${deploy_dir}/${COMPOSE_FILE}" \
-            down -v --remove-orphans; then
+            down "${down_flags[@]}"; then
             echo "::error::docker compose down failed for ${deploy_dir}; leaving it in place for investigation/retry"
             exit 1
           fi
