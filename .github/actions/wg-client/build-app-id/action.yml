@@ -1,0 +1,40 @@
+name: Build App ID
+description: Compute a deterministic app ID by hashing the concatenation of the repo id, branch name, engine version, build platform, and app version
+
+inputs:
+  repo_id:
+    description: GitHub repo id
+    required: true
+  branch_name:
+    description: git branch name
+    required: true
+  engine_version:
+    description: game engine version
+    required: true
+  build_platform:
+    description: target platform
+    required: true
+  app_version:
+    description: app version
+    required: true
+
+outputs:
+  app_id:
+    description: SHA-256 hash of the concatenated inputs
+    value: ${{ steps.hash.outputs.app_id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute app ID hash
+      id: hash
+      shell: bash
+      env:
+        REPO_ID: ${{ inputs.repo_id }}
+        BRANCH_NAME: ${{ inputs.branch_name }}
+        ENGINE_VERSION: ${{ inputs.engine_version }}
+        BUILD_PLATFORM: ${{ inputs.build_platform }}
+        APP_VERSION: ${{ inputs.app_version }}
+      run: |
+        app_id="$(printf '%s' "${REPO_ID}${BRANCH_NAME}${ENGINE_VERSION}${BUILD_PLATFORM}${APP_VERSION}" | sha256sum | cut -d ' ' -f1)"
+        echo "app_id=${app_id}" >> "$GITHUB_OUTPUT"
