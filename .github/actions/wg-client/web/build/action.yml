@@ -166,7 +166,7 @@ runs:
         PLATFORM: ${{ inputs.platform }}
         BUILD_LOG_PATH: ${{ steps.env.outputs.build_log_path }}
       run: |
-        pattern="build Task \($PLATFORM\) Finished in \(([0-9]+ hr )?([0-9]+ min )?[0-9]+ s\)ms"
+        pattern="build Task \($PLATFORM\) Finished in \((([0-9]+ hr )?([0-9]+ min )?[0-9]+ s|([0-9]+ hr )?[0-9]+ min|[0-9]+ hr)\)ms"
 
         if [ ! -f "$BUILD_LOG_PATH" ]; then
           echo "::error::$BUILD_LOG_PATH not found; Cocos Creator CLI may not have run."
