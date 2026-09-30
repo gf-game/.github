@@ -1,0 +1,35 @@
+name: Fetch Image Label Value
+description: Fetch the value of the specified label of the given image
+
+inputs:
+  image_tag:
+    description: The tag of the image
+    required: true
+  label:
+    description: The name of the label
+    required: true
+
+outputs:
+  value:
+    description: The value of the specified label of the given image
+    value: ${{ steps.read.outputs.value }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the value of the image label
+      id: read
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ inputs.image_tag }}
+        LABEL: ${{ inputs.label }}
+      run: |
+        docker pull "${IMAGE_TAG}"
+        escaped_label="${LABEL//\\/\\\\}"
+        escaped_label="${escaped_label//\"/\\\"}"
+        value="$(docker inspect --format '{{ if .Config.Labels }}{{ index .Config.Labels "'"${escaped_label}"'" }}{{ end }}' "${IMAGE_TAG}")"
+        {
+          echo "value<<EOF"
+          echo "$value"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
