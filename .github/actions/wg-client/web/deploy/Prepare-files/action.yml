@@ -1,0 +1,41 @@
+name: Prepare web client deployment files
+description: Extract the docker-compose.yml from the image and write the .env file
+
+inputs:
+  image_tag:
+    description: Fully qualified image tag
+    required: true
+  deploy_file_dir:
+    description: Directory on the deploy host holding this env/branch pair's deployment state
+    required: true
+
+outputs:
+  compose_file:
+    description: Path to the extracted docker-compose.yml file
+    value: ${{ steps.compose.outputs.file }}
+  env_file:
+    description: Path to the .env file
+    value: ${{ steps.env.outputs.file }}    
+
+runs:
+  using: composite
+  steps:
+    - name: Extract docker-compose.yml from the image
+      id: compose
+      uses: gf-game/.github/.github/actions/docker/extract-image-file@8fe7900c10206ef3b9b56164d8ca35600c0696b7
+      with:
+        src_image: ${{ inputs.image_tag }}
+        src_file_path: /docker-compose.yml
+        dest_dir: ${{ inputs.deploy_file_dir }}
+
+    - name: Write env file
+      id: env
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ inputs.image_tag }}      
+        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
+      run: |
+        mkdir -p "${DEPLOY_FILE_DIR}"
+        env_file="${DEPLOY_FILE_DIR}/.env"
+        echo "IMAGE=${IMAGE_TAG}" > "$env_file"
+        echo "file=$env_file" >> "$GITHUB_OUTPUT"
