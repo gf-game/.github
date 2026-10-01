@@ -1,0 +1,138 @@
+name: Deploy web client on self-hosted server
+description: Deploy web client on self-hosted server
+
+inputs:
+  project_name:
+    description: Docker Compose project name for this env/branch deployment
+    required: true
+  compose_file:
+    description: Path to the docker-compose.yml file to deploy
+    required: true
+  dot_env_file:
+    description: Path to the .env used by docker compose
+    required: true
+  deploy_file_dir:
+    description: Directory on the deploy host holding this env/branch pair's deployment state
+    required: true
+  env_name:
+    description: Environment being deployed into
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  bundle_file_dir:
+    description: The file directory where the bundles should go to
+    required: true
+  bundle_registry_sn:
+    description: Bundle registry sn
+    required: true
+  bundle_artifact_name:
+    description: The name of bundle artifact file
+    required: true
+  app_sn:
+    description: app sn
+    required: true
+  app_config:
+    description: The content of app config
+    required: true
+  app_config_dir:
+    description: Directory to hold the app config
+    required: true
+  nginx_server_config_template:
+    description: printf template for the nginx server block config
+    required: true
+  server_domain_suffix:
+    description: Domain suffix appended to the branch/env/repo subdomain
+    required: true
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy with Docker Compose
+      shell: bash
+      env:
+        PROJECT_NAME: ${{ inputs.project_name }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+        DOT_ENV_FILE: ${{ inputs.dot_env_file }}
+      run: |
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DOT_ENV_FILE}" \
+          -f "${COMPOSE_FILE}" \
+          pull
+
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DOT_ENV_FILE}" \
+          -f "${COMPOSE_FILE}" \
+          up -d --remove-orphans
+
+    - name: Record assigned host port
+      id: ports
+      shell: bash
+      env:
+        DEPLOY_FILE_DIR: ${{ inputs.deploy_file_dir }}
+        PROJECT_NAME: ${{ inputs.project_name }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+        DOT_ENV_FILE: ${{ inputs.dot_env_file }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+      run: |
+        web_port="$(docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DOT_ENV_FILE}" \
+          -f "${COMPOSE_FILE}" \
+          port client 80 | cut -d: -f2)"
+
+        echo "${web_port}" > "${DEPLOY_FILE_DIR}/web_port"
+        echo "web=${web_port}" >> "$GITHUB_OUTPUT"
+        echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable on host port \`${web_port}\`" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Deploy bundles
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-bundles@ed4bb8af823264f93ee3688717106091f3de6f98
+      with:
+        bundle_file_dir: ${{ inputs.bundle_file_dir }}
+        bundle_artifact_name: ${{ inputs.bundle_artifact_name }}
+
+    - name: Deploy app config
+      shell: bash
+      env:
+        APP_CONFIG: ${{ inputs.app_config }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        BUNDLE_REGISTRY_SN: ${{ inputs.bundle_registry_sn }}
+        APP_CONFIG_DIR: ${{ inputs.app_config_dir }}
+        APP_SN: ${{ inputs.app_sn }}
+      run: |
+        mkdir -p "${APP_CONFIG_DIR}"
+
+        echo "${APP_CONFIG}" \
+          | sed "s/<branch-slug>/${BRANCH_SLUG}/g; s/<env-name>/${ENV_NAME}/g; s/<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}/g" \
+          > "${APP_CONFIG_DIR}/${APP_SN}"
+
+    - name: Configure reverse proxy server
+      shell: bash
+      env:
+        NGINX_SERVER_CONFIG_TEMPLATE: ${{ inputs.nginx_server_config_template }}
+        SERVER_DOMAIN_SUFFIX: ${{ inputs.server_domain_suffix }}
+        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        WEB_PORT: ${{ steps.ports.outputs.web }}
+      run: |
+        server_domain="${BRANCH_SLUG}.${ENV_NAME}.${REPO_SLUG}-web.${SERVER_DOMAIN_SUFFIX}"
+        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}-web_${ENV_NAME}_${BRANCH_SLUG}.conf"
+
+        printf "${NGINX_SERVER_CONFIG_TEMPLATE}\n" "${server_domain}" "${WEB_PORT}" | sudo tee "${conf_file}" > /dev/null
+
+        sudo nginx -t
+        sudo nginx -s reload
+
+        echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable at \`${server_domain}\`" >> "$GITHUB_STEP_SUMMARY"
