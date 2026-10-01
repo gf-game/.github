@@ -1,0 +1,70 @@
+name: Deploy web client bundles
+description: Download the built remote bundle artifact and sync it into the live bundle directory
+
+inputs:
+  bundle_file_dir:
+    description: The file directory where the bundles should go to
+    required: true
+  bundle_artifact_name:
+    description: The name of bundle artifact file
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download bundle artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.bundle_artifact_name }}
+        path: ${{ runner.temp }}/bundle-download
+
+    - name: Rename bundle manifests
+      shell: bash
+      env:
+        TMP_DIR: ${{ runner.temp }}/bundle-download
+      run: |
+        shopt -s nullglob
+
+        for bundle_dir in "${TMP_DIR}"/*/; do
+          config_file="$(find "${bundle_dir}" -maxdepth 1 -name 'config.*.json' -print -quit)"
+          if [ -z "${config_file}" ]; then
+            echo "::error::No config.<hash>.json manifest found in ${bundle_dir}"
+            exit 1
+          fi
+
+          mv "${config_file}" "${bundle_dir}config.json"
+        done
+
+    - name: Sync bundle assets
+      shell: bash
+      env:
+        TMP_DIR: ${{ runner.temp }}/bundle-download
+        BUNDLE_FILE_DIR: ${{ inputs.bundle_file_dir }}
+      run: |
+        shopt -s nullglob
+
+        mkdir -p "${BUNDLE_FILE_DIR}"
+
+        for bundle_dir in "${TMP_DIR}"/*/; do
+          bundle_name="$(basename "${bundle_dir}")"
+          dest_dir="${BUNDLE_FILE_DIR}/${bundle_name}"
+          mkdir -p "${dest_dir}"
+
+          for sub in import native; do
+            if [ -d "${bundle_dir}${sub}" ]; then
+              rsync -a "${bundle_dir}${sub}/" "${dest_dir}/${sub}/"
+            fi
+          done
+        done
+
+    - name: Sync bundle manifests
+      shell: bash
+      env:
+        TMP_DIR: ${{ runner.temp }}/bundle-download
+        BUNDLE_FILE_DIR: ${{ inputs.bundle_file_dir }}
+      run: |
+        rsync -a \
+          --include='*/' \
+          --include='config.json' \
+          --exclude='*' \
+          "${TMP_DIR}/" "${BUNDLE_FILE_DIR}/"
