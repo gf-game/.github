@@ -1,0 +1,102 @@
+name: Deploy web client on self-hosted machine
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: Tag of the docker image containing web client
+        type: string
+        required: true
+      deploy_env:
+        description: Environment this workflow is gonna deploy into
+        type: string
+        required: true
+      deploy_file_root:
+        description: Root directory on the host where each env/branch pair's deployment state lives
+        type: string
+        required: true
+      bundle_artifact_name:
+        description: Name of workflow artifact containing web client's remote bundles
+        type: string
+        required: true
+      bundle_file_root:
+        description: Directory on the host where remote bundles are stored
+        type: string
+        required: true
+      app_config_template:
+        description: Template of app config
+        type: string
+        required: true
+      app_config_dir:
+        description: Directory on the host where app config files are stored
+        type: string
+        required: true
+      nginx_server_config_template:
+        description: Template of nginx reverse server config
+        type: string
+        required: true
+      server_domain_suffix:
+        description: Domain suffix appended to the branch/env/repo subdomain
+        type: string
+        required: true
+      nginx_conf_root:
+        description: Directory on the deploy host holding nginx server block configs
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.image_tag }}-${{ inputs.deploy_env }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, docker]
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve metadata
+        id: metadata
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@6463ed9c50354f64c5ea3466fbb417ed894a164d
+        with:
+          image_tag: ${{ inputs.image_tag }}
+          env_name: ${{ inputs.deploy_env }}
+          deploy_file_root: ${{ inputs.deploy_file_root }}
+
+      - name: Prepare deployment files
+        id: files
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/prepare-files@6463ed9c50354f64c5ea3466fbb417ed894a164d
+        with:
+          image_tag: ${{ inputs.image_tag }}
+          deploy_file_dir: ${{ steps.metadata.outputs.deploy_file_dir }}
+
+      - name: Deploy
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@6463ed9c50354f64c5ea3466fbb417ed894a164d
+        with:
+          project_name: ${{ steps.metadata.outputs.project_name }}
+          compose_file: ${{ steps.files.outputs.compose_file }}
+          dot_env_file: ${{ steps.files.outputs.env_file }}
+          deploy_file_dir: ${{ steps.metadata.outputs.deploy_file_dir }}
+          env_name: ${{ inputs.deploy_env }}
+          repo_slug: ${{ steps.metadata.outputs.repo_slug }}
+          branch_slug: ${{ steps.metadata.outputs.branch_slug }}
+          bundle_file_dir: ${{ inputs.bundle_file_root }}/${{ steps.metadata.outputs.bundle_registry_sn }}
+          bundle_registry_sn: ${{ steps.metadata.outputs.bundle_registry_sn }}
+          bundle_artifact_name: ${{ inputs.bundle_artifact_name }}
+          app_sn: ${{ steps.metadata.outputs.app_sn }}
+          app_config: ${{ inputs.app_config_template }}
+          app_config_dir: ${{ inputs.app_config_dir }}
+          nginx_server_config_template: ${{ inputs.nginx_server_config_template }}
+          server_domain_suffix: ${{ inputs.server_domain_suffix }}
+          nginx_conf_root: ${{ inputs.nginx_conf_root }}
