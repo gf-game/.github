@@ -111,11 +111,11 @@ runs:
         APP_CONFIG_DIR: ${{ inputs.app_config_dir }}
         APP_SN: ${{ inputs.app_sn }}
       run: |
-        mkdir -p "${APP_CONFIG_DIR}"
+        mkdir -p "${APP_CONFIG_DIR}/${APP_SN}"
 
         echo "${APP_CONFIG}" \
           | sed "s/<branch-slug>/${BRANCH_SLUG}/g; s/<env-name>/${ENV_NAME}/g; s/<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}/g" \
-          > "${APP_CONFIG_DIR}/${APP_SN}"
+          > "${APP_CONFIG_DIR}/${APP_SN}/config.json"
 
     - name: Configure reverse proxy server
       shell: bash
