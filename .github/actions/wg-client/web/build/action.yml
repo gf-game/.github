@@ -37,8 +37,8 @@ outputs:
     description: "Full image tag of the built client image"
     value: ${{ steps.meta.outputs.tags }}
   bundle_artifact_name:
-    description: "Name of the uploaded workflow artifact containing the build output"
-    value: ${{ steps.env.outputs.bundle_artifact_name }}
+    description: "Name of the uploaded workflow artifact containing the build output, or empty if no bundle files were produced"
+    value: ${{ steps.bundle_output.outputs.bundle_artifact_name }}
 
 runs:
   using: composite
@@ -192,11 +192,27 @@ runs:
         retention-days: 7
 
     - name: Upload build artifact
+      id: upload_bundle
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.env.outputs.bundle_artifact_name }}
         path: ${{ steps.env.outputs.remote_bundle_dir }}
+        if-no-files-found: warn
         retention-days: 7
+
+    - name: Resolve bundle artifact name output
+      id: bundle_output
+      shell: bash
+      env:
+        ARTIFACT_ID: ${{ steps.upload_bundle.outputs.artifact-id }}
+        ARTIFACT_NAME: ${{ steps.env.outputs.bundle_artifact_name }}
+      run: |
+        if [ -n "$ARTIFACT_ID" ]; then
+          echo "bundle_artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+        else
+          echo "No bundle files were found; reporting an empty bundle_artifact_name."
+          echo "bundle_artifact_name=" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
