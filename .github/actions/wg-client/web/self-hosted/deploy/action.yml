@@ -95,6 +95,7 @@ runs:
         echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable on host port \`${web_port}\`" >> "$GITHUB_STEP_SUMMARY"
 
     - name: Deploy bundles
+      if: inputs.bundle_artifact_name != ''
       uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-bundles@ed4bb8af823264f93ee3688717106091f3de6f98
       with:
         bundle_file_dir: ${{ inputs.bundle_file_dir }}
