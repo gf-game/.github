@@ -86,6 +86,6 @@ runs:
 
         echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
         echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
-        echo "project_name=${repo_slug}-${ENV_NAME}-${branch_slug}" >> "$GITHUB_OUTPUT"
+        echo "project_name=${repo_slug}-${ENV_NAME}-${branch_slug}-web" >> "$GITHUB_OUTPUT"
         echo "bundle_registry_sn=${bundle_registry_sn}" >> "$GITHUB_OUTPUT"
         echo "deploy_file_dir=${DEPLOY_FILE_ROOT}/${ENV_NAME}/${branch_slug}" >> "$GITHUB_OUTPUT"
