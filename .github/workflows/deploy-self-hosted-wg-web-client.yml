@@ -82,7 +82,7 @@ jobs:
           deploy_file_dir: ${{ steps.metadata.outputs.deploy_file_dir }}
 
       - name: Deploy
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@6463ed9c50354f64c5ea3466fbb417ed894a164d
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@5cf2ca2815681b5abbfae54870aed6603c707a76
         with:
           project_name: ${{ steps.metadata.outputs.project_name }}
           compose_file: ${{ steps.files.outputs.compose_file }}
