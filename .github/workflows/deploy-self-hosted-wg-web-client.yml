@@ -49,7 +49,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.image_tag }}-${{ inputs.deploy_env }}
+  group: ${{ github.workflow }}-deploy-self-hosted-wg-web-client-${{ inputs.image_tag }}-${{ inputs.deploy_env }}
   cancel-in-progress: true
 
 env:
