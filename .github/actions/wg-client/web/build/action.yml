@@ -193,7 +193,7 @@ runs:
 
     - name: Upload remote bundle artifact
       id: upload_bundle
-      uses: gf-game/.github/.github/actions/wg-client/upload-remote-bundle-artifact@bc381160ba909fd79d7d9973feffe5411e35f445
+      uses: gf-game/.github/.github/actions/wg-client/upload-remote-bundle-artifact@2c12deffe1a0c06692c0563cdc5eb59621a69cdf
       with:
         artifact_name: ${{ steps.env.outputs.bundle_artifact_name }}
         remote_bundle_dir: ${{ steps.env.outputs.remote_bundle_dir }}
