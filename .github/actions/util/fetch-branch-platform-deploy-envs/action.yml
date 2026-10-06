@@ -1,0 +1,55 @@
+name: Fetch branch/platform deploy environments
+description: >
+  Resolve a (branch/platform)'s dev/staging/live deployment environment names
+  from a JSON config, falling back to a '*' entry if the branch doesn't configure
+  the platform
+
+inputs:
+  branch:
+    description: Name of the branch
+    required: true
+  platform:
+    description: Name of the platform
+    required: true
+  config:
+    description: JSON configuration of deployment environments
+    required: true
+
+outputs:
+  dev_env:
+    description: Name of the 'dev' tier's deployment environment, empty if not configured
+    value: ${{ steps.envs.outputs.dev_env }}
+  staging_env:
+    description: Name of the 'staging' tier's deployment environment, empty if not configured
+    value: ${{ steps.envs.outputs.staging_env }}
+  live_env:
+    description: Name of the 'live' tier's deployment environment, empty if not configured
+    value: ${{ steps.envs.outputs.live_env }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve deployment environments
+      id: envs
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        BRANCH: ${{ inputs.branch }}
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        if [ -z "${CONFIG}" ]; then
+          echo "::error::Input 'config' is not set"
+          exit 1
+        fi
+
+        if ! jq -e --arg branch "${BRANCH}" --arg platform "${PLATFORM}" \
+          '(.[$branch] // .["*"] // {}) | has($platform)' <<<"${CONFIG}" > /dev/null; then
+          echo "::error::branch '${BRANCH}' does not configure platform '${PLATFORM}' (and no usable default '*' entry) in the given deployment configuration"
+          exit 1
+        fi
+
+        for tier in dev staging live; do
+          env_name="$(jq -r --arg branch "${BRANCH}" --arg platform "${PLATFORM}" --arg tier "${tier}" \
+            '((.[$branch] // .["*"] // {})[$platform] // []) | map(select(.tier == $tier)) | .[0].env // empty' <<<"${CONFIG}")"
+          echo "${tier}_env=${env_name}" >> "$GITHUB_OUTPUT"
+        done
