@@ -61,7 +61,7 @@ runs:
         if [ "${has_bundle}" = true ]; then
           jq -n \
             --argjson bundles "${bundles_json}" \
-            --arg built_at "$(date -u +%Y-%m-%d)" \
+            --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%S)" \
             '{bundles: $bundles, built_at: $built_at}' > "${REMOTE_BUNDLE_DIR}/catalog.json"
         fi
 
