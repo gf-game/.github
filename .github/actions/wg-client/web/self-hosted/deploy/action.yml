@@ -38,8 +38,17 @@ inputs:
   app_config:
     description: The content of app config
     required: true
-  app_config_dir:
-    description: Directory to hold the app config
+  app_config_root:
+    description: Root directory to hold app config files
+    required: true
+  portal_url:
+    description: URL of the portal to add to the app config
+    required: true
+  game_server_url:
+    description: URL template of the game server to add to the app config
+    required: true
+  bundle_cdn_url:
+    description: URL template of the bundle CDN to add to the app config
     required: true
   nginx_server_config_template:
     description: printf template for the nginx server block config
@@ -105,17 +114,31 @@ runs:
       shell: bash
       env:
         APP_CONFIG: ${{ inputs.app_config }}
+        PORTAL_URL: ${{ inputs.portal_url }}
+        GAME_SERVER_URL: ${{ inputs.game_server_url }}
+        BUNDLE_CDN_URL: ${{ inputs.bundle_cdn_url }}
+        BUNDLE_ARTIFACT_NAME: ${{ inputs.bundle_artifact_name }}
         BRANCH_SLUG: ${{ inputs.branch_slug }}
         ENV_NAME: ${{ inputs.env_name }}
         BUNDLE_REGISTRY_SN: ${{ inputs.bundle_registry_sn }}
-        APP_CONFIG_DIR: ${{ inputs.app_config_dir }}
+        APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
         APP_SN: ${{ inputs.app_sn }}
       run: |
-        mkdir -p "${APP_CONFIG_DIR}/${APP_SN}"
+        app_config_dir="${APP_CONFIG_ROOT}/${APP_SN}"
+        mkdir -p "${app_config_dir}"
+        game_server_url="${GAME_SERVER_URL//<branch-slug>/${BRANCH_SLUG}}"
+        game_server_url="${game_server_url//<env-name>/${ENV_NAME}}"
+        bundle_cdn_url="${BUNDLE_CDN_URL//<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}}"
 
         echo "${APP_CONFIG}" \
-          | sed "s/<branch-slug>/${BRANCH_SLUG}/g; s/<env-name>/${ENV_NAME}/g; s/<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}/g" \
-          > "${APP_CONFIG_DIR}/${APP_SN}/config.json"
+          | jq \
+              --arg portal_url "${PORTAL_URL}" \
+              --arg game_server_url "${game_server_url}" \
+              --arg bundle_cdn_url "${bundle_cdn_url}" \
+              --arg bundle_artifact_name "${BUNDLE_ARTIFACT_NAME}" \
+              '. + {portal_url: $portal_url, game_server_url: $game_server_url}
+                 + (if $bundle_artifact_name != "" then {bundle_cdn_url: $bundle_cdn_url} else {} end)' \
+          > "${app_config_dir}/config.json"
 
     - name: Configure reverse proxy server
       shell: bash
