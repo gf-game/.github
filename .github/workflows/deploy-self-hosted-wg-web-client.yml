@@ -23,12 +23,24 @@ on:
         description: Directory on the host where remote bundles are stored
         type: string
         required: true
-      app_config_template:
-        description: Template of app config
+      app_config:
+        description: App config
         type: string
         required: true
-      app_config_dir:
-        description: Directory on the host where app config files are stored
+      app_config_root:
+        description: Root directory on the host where app config files are stored
+        type: string
+        required: true
+      portal_url:
+        description: URL of the portal to add to the app config
+        type: string
+        required: true
+      game_server_url:
+        description: URL template of the game server to add to the app config
+        type: string
+        required: true
+      bundle_cdn_url:
+        description: URL template of the bundle CDN to add to the app config
         type: string
         required: true
       nginx_server_config_template:
@@ -82,7 +94,7 @@ jobs:
           deploy_file_dir: ${{ steps.metadata.outputs.deploy_file_dir }}
 
       - name: Deploy
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@ba3196c17202937002ecae5a736eddb1445e32b7
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@4213ea9ed223b2a64d0c2351f9c900f9b5c2986b
         with:
           project_name: ${{ steps.metadata.outputs.project_name }}
           compose_file: ${{ steps.files.outputs.compose_file }}
@@ -95,8 +107,11 @@ jobs:
           bundle_registry_sn: ${{ steps.metadata.outputs.bundle_registry_sn }}
           bundle_artifact_name: ${{ inputs.bundle_artifact_name }}
           app_sn: ${{ steps.metadata.outputs.app_sn }}
-          app_config: ${{ inputs.app_config_template }}
-          app_config_dir: ${{ inputs.app_config_dir }}
+          app_config: ${{ inputs.app_config }}
+          app_config_root: ${{ inputs.app_config_root }}
+          portal_url: ${{ inputs.portal_url }}
+          game_server_url: ${{ inputs.game_server_url }}
+          bundle_cdn_url: ${{ inputs.bundle_cdn_url }}
           nginx_server_config_template: ${{ inputs.nginx_server_config_template }}
           server_domain_suffix: ${{ inputs.server_domain_suffix }}
           nginx_conf_root: ${{ inputs.nginx_conf_root }}
