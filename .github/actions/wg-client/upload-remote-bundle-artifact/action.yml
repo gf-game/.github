@@ -1,0 +1,75 @@
+name: Upload Remote Bundle Artifact
+description: Compose the remote bundles catalog and upload the remote bundle directory as a workflow artifact
+
+inputs:
+  remote_bundle_dir:
+    description: Path to the remote bundle directory, relative to the repo root
+    required: true
+  artifact_name:
+    description: Name of the uploaded artifact
+    required: true
+  retention-days:
+    description: Number of days to retain the uploaded artifact
+    required: true
+
+outputs:
+  artifact-id:
+    description: ID of the uploaded remote bundle artifact
+    value: ${{ steps.upload.outputs.artifact-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compose remote bundles catalog
+      shell: bash
+      env:
+        REMOTE_BUNDLE_DIR: ${{ inputs.remote_bundle_dir }}
+      run: |
+        shopt -s nullglob
+
+        bundles_json="{}"
+        has_bundle=false
+
+        for bundle_dir in "${REMOTE_BUNDLE_DIR}"/*/; do
+          bundle_name="$(basename "${bundle_dir}")"
+
+          config_file="$(find "${bundle_dir}" -maxdepth 1 -name 'config.*.json' -print -quit)"
+          index_file="$(find "${bundle_dir}" -maxdepth 1 -name 'index.*.js' -print -quit)"
+
+          if [ -z "${config_file}" ] || [ -z "${index_file}" ]; then
+            echo "::error::Bundle '${bundle_name}' is missing a config.<md5>.json or index.<md5>.js file"
+            exit 1
+          fi
+
+          config_md5="$(basename "${config_file}")"
+          config_md5="${config_md5#config.}"
+          config_md5="${config_md5%.json}"
+
+          index_md5="$(basename "${index_file}")"
+          index_md5="${index_md5#index.}"
+          index_md5="${index_md5%.js}"
+
+          if [ "${config_md5}" != "${index_md5}" ]; then
+            echo "::error::Bundle '${bundle_name}' has mismatched hashes between config (${config_md5}) and index (${index_md5})"
+            exit 1
+          fi
+
+          bundles_json="$(jq --arg name "${bundle_name}" --arg md5 "${config_md5}" '. + {($name): $md5}' <<< "${bundles_json}")"
+          has_bundle=true
+        done
+
+        if [ "${has_bundle}" = true ]; then
+          jq -n \
+            --argjson bundles "${bundles_json}" \
+            --arg built_at "$(date -u +%Y-%m-%d)" \
+            '{bundles: $bundles, built_at: $built_at}' > "${REMOTE_BUNDLE_DIR}/catalog.json"
+        fi
+
+    - name: Upload remote bundle artifact
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ inputs.remote_bundle_dir }}
+        if-no-files-found: warn
+        retention-days: ${{ inputs.retention-days }}
