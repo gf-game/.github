@@ -191,13 +191,12 @@ runs:
         if-no-files-found: error
         retention-days: 7
 
-    - name: Upload build artifact
+    - name: Upload remote bundle artifact
       id: upload_bundle
-      uses: actions/upload-artifact@v4
+      uses: gf-game/.github/.github/actions/wg-client/upload-remote-bundle-artifact@bc381160ba909fd79d7d9973feffe5411e35f445
       with:
-        name: ${{ steps.env.outputs.bundle_artifact_name }}
-        path: ${{ steps.env.outputs.remote_bundle_dir }}
-        if-no-files-found: warn
+        artifact_name: ${{ steps.env.outputs.bundle_artifact_name }}
+        remote_bundle_dir: ${{ steps.env.outputs.remote_bundle_dir }}
         retention-days: 7
 
     - name: Resolve bundle artifact name output
