@@ -2,6 +2,9 @@ name: Build Web Client
 description: Build the Cocos Creator web-mobile client and push the resulting image to a container registry
 
 inputs:
+  branch:
+    description: Branch to check out and build
+    required: true
   build_env:
     description: "Target build environment"
     required: true
@@ -39,9 +42,17 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Resolve the branch's head sha
+      id: resolve-branch-head
+      uses: gf-game/.github/.github/actions/util/resolve-branch-head-sha@3b517fdb57421cfb430ef727cfec2967fe091682
+      with:
+        branch: ${{ inputs.branch }}
+        token: ${{ github.token }}
+
     - name: Check out repository
       uses: actions/checkout@v6.0.3
       with:
+        ref: ${{ steps.resolve-branch-head.outputs.sha }}
         persist-credentials: false
         clean: false
         lfs: true
@@ -64,8 +75,8 @@ runs:
         REGISTRY: ghcr.io
         PLATFORM: web-mobile
         REPO_ID: ${{ github.repository }}
-        RAW_REF: ${{ github.ref_name }}
-        RAW_SHA: ${{ github.sha }}
+        RAW_BRANCH: ${{ steps.resolve-branch-head.outputs.branch_name }}
+        RAW_SHA: ${{ steps.resolve-branch-head.outputs.sha }}
         RAW_BUILD_ENV: ${{ inputs.build_env }}
         RAW_APP_VERSION: ${{ inputs.app_version }}
         CLIENT_DIR: ${{ inputs.client_dir }}
@@ -75,11 +86,11 @@ runs:
         }
 
         short_sha="${RAW_SHA:0:7}"
-        branch_slug="$(sanitize "$RAW_REF")"
+        branch_slug="$(sanitize "$RAW_BRANCH")"
         build_env_slug="$(sanitize "$RAW_BUILD_ENV")"
         image_tag="$PLATFORM-$build_env_slug-$short_sha"
         cocos_ver="$(jq -r '.creator.version' package.json)"
-        app_sn="$(printf '%s' "${REPO_ID}|${RAW_REF}|${cocos_ver}|${PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
+        app_sn="$(printf '%s' "${REPO_ID}|${RAW_BRANCH}|${cocos_ver}|${PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
 
         echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
         echo "branch_slug=$branch_slug" >> "$GITHUB_OUTPUT"
@@ -212,7 +223,7 @@ runs:
         tags: |
           type=raw,value=${{ steps.env.outputs.image_tag }}
         labels: |
-          org.opencontainers.image.ref.name=${{ github.ref_name }}
+          org.opencontainers.image.ref.name=${{ steps.resolve-branch-head.outputs.branch_name }}
           build.platform=${{ steps.env.outputs.platform }}
           build.env=${{ inputs.build_env }}
           build.debug=${{ inputs.debug }}
