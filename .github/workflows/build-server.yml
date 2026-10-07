@@ -43,7 +43,7 @@ env:
 
 jobs:
   validate:
-    name: Validate targets input
+    name: Validate inputs and resolve branch
     runs-on: [self-hosted, Linux, docker]
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
@@ -59,25 +59,12 @@ jobs:
             exit 1
           fi
 
-      - name: Resolve branch to a commit sha
+      - name: Resolve the branch's head sha
         id: resolve
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ inputs.branch }}
-        run: |
-          branch_name="${BRANCH#refs/heads/}"
-
-          sha="$(curl -sSL \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/commits/${branch_name}" \
-            | jq -r '.sha')"
-          if [ -z "$sha" ] || [ "$sha" = "null" ]; then
-            echo "::error::Could not resolve branch '${BRANCH}' to a commit"
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+        uses: gf-game/.github/.github/actions/util/resolve-branch-head-sha@3b517fdb57421cfb430ef727cfec2967fe091682
+        with:
+          branch: ${{ inputs.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-image:
     name: Build and push ${{ matrix.target }} image
