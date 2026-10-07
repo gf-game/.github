@@ -1,0 +1,48 @@
+name: Resolve branch head sha
+description: Resolve a branch to the sha of its head commit via the GitHub API
+
+inputs:
+  branch:
+    description: Branch to resolve, either a bare name or a 'refs/heads/' ref
+    required: true
+  repository:
+    description: Repository (owner/name) the branch belongs to
+    required: false
+    default: ${{ github.repository }}
+  token:
+    description: GitHub token used to query the commits API
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  sha:
+    description: Sha of the branch's head commit
+    value: ${{ steps.resolve.outputs.sha }}
+  branch_name:
+    description: Branch name with any 'refs/heads/' prefix stripped
+    value: ${{ steps.resolve.outputs.branch_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve branch to a commit sha
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        BRANCH: ${{ inputs.branch }}
+        REPOSITORY: ${{ inputs.repository }}
+      run: |
+        branch_name="${BRANCH#refs/heads/}"
+
+        sha="$(curl -sSL \
+          -H "Authorization: Bearer ${GH_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${REPOSITORY}/commits/${branch_name}" \
+          | jq -r '.sha')"
+        if [ -z "$sha" ] || [ "$sha" = "null" ]; then
+          echo "::error::Could not resolve branch '${BRANCH}' to a commit"
+          exit 1
+        fi
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
