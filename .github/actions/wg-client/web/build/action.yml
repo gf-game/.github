@@ -1,16 +1,12 @@
 name: Build Web Client
-description: Build the Cocos Creator web client and push the resulting image to a container registry
+description: Build the Cocos Creator web-mobile client and push the resulting image to a container registry
 
 inputs:
-  platform:
-    description: "Build platform"
-    type: string
-    required: true
   build_env:
     description: "Target build environment"
     required: true
   debug:
-    description: "Build in debug mode(true/false)"
+    description: "Build in debug mode (true/false)"
     required: true
   extra_build_config:
     description: "Extra build config"
@@ -43,20 +39,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Verify platform
-      shell: bash
-      run: |
-        platform="${{ inputs.platform }}"
-        case "$platform" in
-          web-mobile|web-desktop)
-            echo "Platform '$platform' is valid."
-            ;;
-          *)
-            echo "::error::Invalid platform '$platform'. Expected one of: web-mobile, web-desktop."
-            exit 1
-            ;;
-        esac
-
     - name: Check out repository
       uses: actions/checkout@v6.0.3
       with:
@@ -80,10 +62,10 @@ runs:
       working-directory: ${{ inputs.client_dir }}
       env:
         REGISTRY: ghcr.io
+        PLATFORM: web-mobile
         REPO_ID: ${{ github.repository }}
         RAW_REF: ${{ github.ref_name }}
         RAW_SHA: ${{ github.sha }}
-        RAW_PLATFORM: ${{ inputs.platform }}
         RAW_BUILD_ENV: ${{ inputs.build_env }}
         RAW_APP_VERSION: ${{ inputs.app_version }}
         CLIENT_DIR: ${{ inputs.client_dir }}
@@ -94,24 +76,23 @@ runs:
 
         short_sha="${RAW_SHA:0:7}"
         branch_slug="$(sanitize "$RAW_REF")"
-        platform_slug="$(sanitize "$RAW_PLATFORM")"
         build_env_slug="$(sanitize "$RAW_BUILD_ENV")"
-        image_tag="$platform_slug-$build_env_slug-$short_sha"
+        image_tag="$PLATFORM-$build_env_slug-$short_sha"
         cocos_ver="$(jq -r '.creator.version' package.json)"
-        app_sn="$(printf '%s' "${REPO_ID}|${RAW_REF}|${cocos_ver}|${RAW_PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
+        app_sn="$(printf '%s' "${REPO_ID}|${RAW_REF}|${cocos_ver}|${PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
 
         echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
         echo "branch_slug=$branch_slug" >> "$GITHUB_OUTPUT"
-        echo "platform_slug=$platform_slug" >> "$GITHUB_OUTPUT"
+        echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
         echo "build_env_slug=$build_env_slug" >> "$GITHUB_OUTPUT"
         echo "image_tag=$image_tag" >> "$GITHUB_OUTPUT"
-        echo "bundle_artifact_name=$platform_slug-$build_env_slug-bundle" >> "$GITHUB_OUTPUT"
+        echo "bundle_artifact_name=$PLATFORM-$build_env_slug-bundle" >> "$GITHUB_OUTPUT"
         echo "build_path=$CLIENT_DIR/build" >> "$GITHUB_OUTPUT"
         echo "build_config_path=$CLIENT_DIR/build-config.json" >> "$GITHUB_OUTPUT"
-        echo "build_config_artifact_name=$platform_slug-$build_env_slug-build-config" >> "$GITHUB_OUTPUT"
+        echo "build_config_artifact_name=$PLATFORM-$build_env_slug-build-config" >> "$GITHUB_OUTPUT"
         echo "build_log_path=$CLIENT_DIR/build.log" >> "$GITHUB_OUTPUT"
-        echo "build_log_artifact_name=$platform_slug-$build_env_slug-build-log" >> "$GITHUB_OUTPUT"
-        echo "remote_bundle_dir=$CLIENT_DIR/build/$RAW_PLATFORM/remote" >> "$GITHUB_OUTPUT"
+        echo "build_log_artifact_name=$PLATFORM-$build_env_slug-build-log" >> "$GITHUB_OUTPUT"
+        echo "remote_bundle_dir=$CLIENT_DIR/build/$PLATFORM/remote" >> "$GITHUB_OUTPUT"
         echo "cocos_ver=$cocos_ver" >> "$GITHUB_OUTPUT"
         echo "cocos_exe=C:\\ProgramData\\cocos\\editors\\Creator\\$cocos_ver\\CocosCreator.exe" >> "$GITHUB_OUTPUT"
         echo "app_sn=$app_sn" >> "$GITHUB_OUTPUT"
@@ -121,7 +102,7 @@ runs:
       shell: bash
       env:
         DEBUG: ${{ inputs.debug }}
-        PLATFORM: ${{ inputs.platform }}
+        PLATFORM: ${{ steps.env.outputs.platform }}
         EXTRA_BUILD_CONFIG: ${{ inputs.extra_build_config }}
         BUILD_PATH: ${{ steps.env.outputs.build_path }}
         BUILD_CONFIG_PATH: ${{ steps.env.outputs.build_config_path }}
@@ -163,7 +144,7 @@ runs:
     - name: Verify Cocos Creator build succeeded
       shell: bash
       env:
-        PLATFORM: ${{ inputs.platform }}
+        PLATFORM: ${{ steps.env.outputs.platform }}
         BUILD_LOG_PATH: ${{ steps.env.outputs.build_log_path }}
       run: |
         pattern="build Task \($PLATFORM\) Finished in \((([0-9]+ hr )?([0-9]+ min )?[0-9]+ s|([0-9]+ hr )?[0-9]+ min|[0-9]+ hr)\)ms"
@@ -232,7 +213,7 @@ runs:
           type=raw,value=${{ steps.env.outputs.image_tag }}
         labels: |
           org.opencontainers.image.ref.name=${{ github.ref_name }}
-          build.platform=${{ inputs.platform }}
+          build.platform=${{ steps.env.outputs.platform }}
           build.env=${{ inputs.build_env }}
           build.debug=${{ inputs.debug }}
           app.sn=${{ steps.env.outputs.app_sn }}
@@ -245,7 +226,7 @@ runs:
         file: ${{ inputs.dockerfile }}
         build-args: |
           GIT_BRANCH=${{ steps.env.outputs.branch_slug }}
-          PLATFORM=${{ steps.env.outputs.platform_slug }}
+          PLATFORM=${{ steps.env.outputs.platform }}
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
