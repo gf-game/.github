@@ -55,6 +55,10 @@ on:
         description: Directory on the deploy host holding nginx server block configs
         type: string
         required: true
+      host_label:
+        description: Label of the host where this workflow deploys the web client
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -69,7 +73,7 @@ env:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, Linux, docker]
+    runs-on: [self-hosted, "${{inputs.host_label}}", Linux, docker]
     steps:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
