@@ -1,0 +1,12 @@
+name: Bash-Including Test
+description: a test
+
+runs:
+  using: composite
+  steps:
+    - name: A test
+      shell: bash
+      env:
+        LIB: ${{ github.action_path}}/../util/lib.sh
+      run: |
+        source $LIB

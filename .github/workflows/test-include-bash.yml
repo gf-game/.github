@@ -1,0 +1,13 @@
+name: Test of including bash file
+
+on:
+  push:
+    branches:
+      - test/include-bash
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: test
+        uses: gf-game/.github/.github/actions/test@test/include-bash
