@@ -17,6 +17,9 @@ inputs:
   env_name:
     description: Environment being deployed into
     required: true
+  env_slug:
+    description: Slug of the environment being deployed into
+    required: true
   repo_slug:
     description: URL-safe slug of the source repository
     required: true
@@ -119,7 +122,7 @@ runs:
         BUNDLE_CDN_URL: ${{ inputs.bundle_cdn_url }}
         BUNDLE_ARTIFACT_NAME: ${{ inputs.bundle_artifact_name }}
         BRANCH_SLUG: ${{ inputs.branch_slug }}
-        ENV_NAME: ${{ inputs.env_name }}
+        ENV_SLUG: ${{ inputs.env_slug }}
         BUNDLE_REGISTRY_SN: ${{ inputs.bundle_registry_sn }}
         APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
         APP_SN: ${{ inputs.app_sn }}
@@ -127,7 +130,7 @@ runs:
         app_config_dir="${APP_CONFIG_ROOT}/${APP_SN}"
         mkdir -p "${app_config_dir}"
         game_server_url="${GAME_SERVER_URL//<branch-slug>/${BRANCH_SLUG}}"
-        game_server_url="${game_server_url//<env-name>/${ENV_NAME}}"
+        game_server_url="${game_server_url//<env-name>/${ENV_SLUG}}"
         bundle_cdn_url="${BUNDLE_CDN_URL//<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}}"
 
         echo "${APP_CONFIG}" \
@@ -148,11 +151,12 @@ runs:
         NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
         REPO_SLUG: ${{ inputs.repo_slug }}
         BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_SLUG: ${{ inputs.env_slug }}
         ENV_NAME: ${{ inputs.env_name }}
         WEB_PORT: ${{ steps.ports.outputs.web }}
       run: |
-        server_domain="${BRANCH_SLUG}.${ENV_NAME}.${REPO_SLUG}-web.${SERVER_DOMAIN_SUFFIX}"
-        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}-web_${ENV_NAME}_${BRANCH_SLUG}.conf"
+        server_domain="${BRANCH_SLUG}.${ENV_SLUG}.${REPO_SLUG}-web.${SERVER_DOMAIN_SUFFIX}"
+        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}-web_${ENV_SLUG}_${BRANCH_SLUG}.conf"
 
         printf "${NGINX_SERVER_CONFIG_TEMPLATE}\n" "${server_domain}" "${WEB_PORT}" | sudo tee "${conf_file}" > /dev/null
 
