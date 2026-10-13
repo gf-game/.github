@@ -47,10 +47,20 @@ jobs:
 
       - name: Resolve metadata
         id: metadata
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@35fbb9e71f38b79bda281d544152a31338275ac2
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@faeac0585e785b7506d0d5e29e241b097efa9be1
         with:
           image_tag: ${{ inputs.image_tag }}
           env_name: ${{ inputs.deploy_env }}
+          web_deploy_file_root: ${{ vars.WEB_DEPLOY_FILE_ROOT }}
+          remote_bundle_file_root: ${{ vars.REMOTE_BUNDLE_FILE_ROOT }}
+          app_config_root: ${{ vars.APP_CONFIG_ROOT }}
+          nginx_conf_root: ${{ vars.NGINX_CONF_ROOT }}
+          portal_url: ${{ vars.PORTAL_URL }}
+          game_server_url: ${{ vars.GAME_SERVER_URL }}
+          bundle_cdn_url: ${{ vars.BUNDLE_CDN_URL }}
+          server_domain_suffix: ${{ vars.SERVER_DOMAIN_SUFFIX }}
+          app_config: ${{ vars.APP_CONFIG }}
+          nginx_server_config_template: ${{ vars.NGINX_SERVER_CONFIG_TEMPLATE }}
 
       - name: Prepare deployment files
         id: files
