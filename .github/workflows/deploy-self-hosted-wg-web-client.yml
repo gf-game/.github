@@ -25,8 +25,8 @@ permissions:
   packages: read
 
 concurrency:
-  group: ${{ github.workflow }}-deploy-self-hosted-wg-web-client-${{ inputs.image_tag }}-${{ inputs.deploy_env }}
-  cancel-in-progress: true
+  group: deploy-self-hosted-wg-web-client-${{ inputs.image_tag }}-${{ inputs.deploy_env }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
