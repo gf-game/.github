@@ -163,23 +163,23 @@ runs:
         echo "project_name=${repo_slug}-${env_slug}-${branch_slug}-web" >> "$GITHUB_OUTPUT"
 
         # Compute path of the directory for the bundle files
-        BUNDLE_FILE_ROOT=$(validate_abs_dir_path BUNDLE_FILE_ROOT)
+        BUNDLE_FILE_ROOT=$(validate_abs_path BUNDLE_FILE_ROOT)
         bundle_file_dir="${BUNDLE_FILE_ROOT}/${bundle_registry_sn}"
-        bundle_file_dir=$(validate_abs_dir_path bundle_file_dir)
+        bundle_file_dir=$(validate_abs_path bundle_file_dir)
         echo "bundle_file_dir=${bundle_file_dir}" >> "$GITHUB_OUTPUT"
 
         # Compute path of the directory for the deployment files
-        DEPLOY_FILE_ROOT=$(validate_abs_dir_path DEPLOY_FILE_ROOT)
+        DEPLOY_FILE_ROOT=$(validate_abs_path DEPLOY_FILE_ROOT)
         deploy_file_dir="${DEPLOY_FILE_ROOT}/${env_slug}/${branch_slug}"
-        deploy_file_dir=$(validate_abs_dir_path deploy_file_dir)
+        deploy_file_dir=$(validate_abs_path deploy_file_dir)
         echo "deploy_file_dir=${deploy_file_dir}" >> "$GITHUB_OUTPUT"
 
         # Fetch path of the root directory for the app configurations
-        APP_CONFIG_ROOT=$(validate_abs_dir_path APP_CONFIG_ROOT)
+        APP_CONFIG_ROOT=$(validate_abs_path APP_CONFIG_ROOT)
         echo "app_config_root=${APP_CONFIG_ROOT}" >> "$GITHUB_OUTPUT"
 
         # Fetch path of the root directory for the nginx configurations
-        NGINX_CONF_ROOT=$(validate_abs_dir_path NGINX_CONF_ROOT)
+        NGINX_CONF_ROOT=$(validate_abs_path NGINX_CONF_ROOT)
         echo "nginx_conf_root=${NGINX_CONF_ROOT}" >> "$GITHUB_OUTPUT"
 
         # Fetch the urls
