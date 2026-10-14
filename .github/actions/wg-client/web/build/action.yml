@@ -80,7 +80,12 @@ runs:
         RAW_BUILD_ENV: ${{ inputs.build_env }}
         RAW_APP_VERSION: ${{ inputs.app_version }}
         CLIENT_DIR: ${{ inputs.client_dir }}
+        SEMVER_LIB: ${{ github.action_path }}/../../../util/bash-libs/semver.sh
       run: |
+        source "$SEMVER_LIB"
+
+        validate_semver RAW_APP_VERSION
+
         sanitize() {
           echo "$1" | sed -E 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]'
         }
@@ -90,6 +95,7 @@ runs:
         build_env_slug="$(sanitize "$RAW_BUILD_ENV")"
         image_tag="$PLATFORM-$build_env_slug-$short_sha"
         cocos_version="$(jq -r '.creator.version' package.json)"
+        validate_semver cocos_version
         app_sn="$(printf '%s' "${REPO_ID}|${RAW_BRANCH}|${cocos_version}|${PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
 
         echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
