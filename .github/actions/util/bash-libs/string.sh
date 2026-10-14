@@ -88,3 +88,25 @@ validate_json_object() {
         return 1
     fi
 }
+
+# Usage: validate_file_name VAR_NAME
+# Validate $VAR_NAME is a non-empty string of only letters, digits, '.', '_' and '-'.
+validate_file_name() {
+    local var_name="$1"
+
+    # Guard the indirect expansion below: an invalid name is a fatal expansion error
+    # that exits the whole (non-interactive) shell instead of returning non-zero.
+    local name_pattern='^[A-Za-z_][A-Za-z0-9_]*$'
+    if [[ ! "${var_name}" =~ $name_pattern ]]; then
+        echo "::error::validate_file_name: '${var_name}' is not a valid variable name (pass the name, not the value)" >&2
+        return 1
+    fi
+
+    local value="${!var_name:-}"
+
+    local pattern='^[A-Za-z0-9._-]+$'
+    if [[ ! "${value}" =~ $pattern ]]; then
+        echo "::error::validate_file_name: ${var_name}='${value}' doesn't match the pattern ${pattern}" >&2
+        return 1
+    fi
+}
