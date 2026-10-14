@@ -223,6 +223,7 @@ runs:
         tags: |
           type=raw,value=${{ steps.env.outputs.image_tag }}
         labels: |
+          ${{ inputs.extra_image_labels }}
           org.opencontainers.image.ref.name=${{ steps.resolve-branch-head.outputs.branch_name }}
           build.cocos_version=${{ steps.env.outputs.cocos_version }}
           build.platform=${{ steps.env.outputs.platform }}
@@ -230,7 +231,6 @@ runs:
           build.debug=${{ inputs.debug }}
           app.version=${{ inputs.app_version }}
           app.sn=${{ steps.env.outputs.app_sn }}
-          ${{ inputs.extra_image_labels }}
 
     - name: Build and push client image
       uses: docker/build-push-action@v6
