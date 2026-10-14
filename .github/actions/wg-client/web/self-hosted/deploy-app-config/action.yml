@@ -1,0 +1,131 @@
+name: Deploy web client app config
+description: Assemble the app config with the deployment urls and write it into the app config directory
+
+inputs:
+  app_config:
+    description: The content of app config
+    required: true
+  app_config_link_root:
+    description: Root directory to hold app config links
+    required: true
+  app_config_root:
+    description: Root directory to hold app configs
+    required: true    
+  app_sn:
+    description: app sn
+    required: true
+  portal_url:
+    description: URL of the portal to add to the app config
+    required: true
+  game_server_url:
+    description: URL template of the game server to add to the app config
+    required: true
+  bundle_cdn_url:
+    description: URL template of the bundle CDN to add to the app config
+    required: true
+  bundle_artifact_name:
+    description: The name of bundle artifact file
+    required: true
+  bundle_registry_sn:
+    description: Bundle registry sn
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true    
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  env_slug:
+    description: Slug of the environment being deployed into
+    required: true
+  cocos_version:
+    description: Version of Cocos Creator the web client image was built with
+    required: true
+  platform:
+    description: Cocos Creator build platform of the web client image
+    required: true
+  app_version:
+    description: Version of the app the web client image was built for
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Write app config file
+      id: file
+      shell: bash
+      env:
+        APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
+        APP_SN: ${{ inputs.app_sn }}
+        APP_CONFIG: ${{ inputs.app_config }}
+        PORTAL_URL: ${{ inputs.portal_url }}
+        GAME_SERVER_URL: ${{ inputs.game_server_url }}
+        BUNDLE_CDN_URL: ${{ inputs.bundle_cdn_url }}
+        BUNDLE_ARTIFACT_NAME: ${{ inputs.bundle_artifact_name }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_SLUG: ${{ inputs.env_slug }}
+        BUNDLE_REGISTRY_SN: ${{ inputs.bundle_registry_sn }}
+        COCOS_VERSION: ${{ inputs.cocos_version }}
+        PLATFORM: ${{ inputs.platform }}
+        APP_VERSION: ${{ inputs.app_version }}
+        PATH_LIB: ${{ github.action_path }}/../../../../util/bash-libs/path.sh
+        STRING_LIB: ${{ github.action_path }}/../../../../util/bash-libs/string.sh
+        APP_CONFIG_LIB: ${{ github.action_path }}/../../bash-lib/app-config.sh
+      run: |
+        source "${PATH_LIB}"
+        source "${STRING_LIB}"
+        source "${APP_CONFIG_LIB}"
+
+        # Validate APP_CONFIG is a json object
+        validate_json_object APP_CONFIG
+
+        # Validate the portal url
+        PORTAL_URL=$(validate_http_url PORTAL_URL)
+
+        # Assemble and validate game-server url
+        game_server_url="${GAME_SERVER_URL//<branch-slug>/${BRANCH_SLUG}}"
+        game_server_url="${game_server_url//<env-name>/${ENV_SLUG}}"
+        game_server_url=$(validate_http_url game_server_url)
+
+        # Assemble and validate bundle-cdn url
+        bundle_cdn_url="${BUNDLE_CDN_URL//<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}}"
+        bundle_cdn_url=$(validate_http_url bundle_cdn_url)
+
+        # Make the app config directory
+        app_config_dir=$(make_app_config_dir "${APP_CONFIG_ROOT}" "${REPO_SLUG}" "${BRANCH_SLUG}" "${COCOS_VERSION}" "${PLATFORM}" "${APP_VERSION}")
+
+        # Get the path to the app config
+        app_config_path=$(get_app_config_path "${app_config_dir}" "${APP_SN}")
+
+        # Write the app config to a temp file first
+        temp_app_config_path=$(make_temp_app_config "${app_config_path}")
+        trap 'rm -f "${temp_app_config_path}"' EXIT
+
+        printf '%s' "${APP_CONFIG}" \
+          | jq \
+              --arg portal_url "${PORTAL_URL}" \
+              --arg game_server_url "${game_server_url}" \
+              --arg bundle_cdn_url "${bundle_cdn_url}" \
+              --arg bundle_artifact_name "${BUNDLE_ARTIFACT_NAME}" \
+              '. + {portal_url: $portal_url, game_server_url: $game_server_url}
+                 + (if $bundle_artifact_name != "" then {bundle_cdn_url: $bundle_cdn_url} else {} end)' \
+          > "${temp_app_config_path}"
+
+        # Replace the app config file with the temp one
+        chmod 644 "${temp_app_config_path}"
+        mv -f "${temp_app_config_path}" "${app_config_path}"
+
+        # Output path of the app config file
+        echo "path=${app_config_path}" >> "$GITHUB_OUTPUT"
+
+    - name: Create link to the app config file
+      shell: bash
+      env:
+        APP_CONFIG_LINK_ROOT: ${{ inputs.app_config_link_root }}
+        APP_SN: ${{ inputs.app_sn }}        
+        APP_CONFIG_PATH: ${{ steps.file.outputs.path }}
+        APP_CONFIG_LIB: ${{ github.action_path }}/../../bash-lib/app-config.sh
+      run: |
+        source "${APP_CONFIG_LIB}"
+        make_app_config_link "${APP_CONFIG_LINK_ROOT}" "${APP_SN}" "${APP_CONFIG_PATH}"
