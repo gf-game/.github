@@ -89,8 +89,8 @@ runs:
         branch_slug="$(sanitize "$RAW_BRANCH")"
         build_env_slug="$(sanitize "$RAW_BUILD_ENV")"
         image_tag="$PLATFORM-$build_env_slug-$short_sha"
-        cocos_ver="$(jq -r '.creator.version' package.json)"
-        app_sn="$(printf '%s' "${REPO_ID}|${RAW_BRANCH}|${cocos_ver}|${PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
+        cocos_version="$(jq -r '.creator.version' package.json)"
+        app_sn="$(printf '%s' "${REPO_ID}|${RAW_BRANCH}|${cocos_version}|${PLATFORM}|${RAW_APP_VERSION}" | sha256sum | cut -d' ' -f1)"
 
         echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
         echo "branch_slug=$branch_slug" >> "$GITHUB_OUTPUT"
@@ -104,8 +104,8 @@ runs:
         echo "build_log_path=$CLIENT_DIR/build.log" >> "$GITHUB_OUTPUT"
         echo "build_log_artifact_name=$PLATFORM-$build_env_slug-build-log" >> "$GITHUB_OUTPUT"
         echo "remote_bundle_dir=$CLIENT_DIR/build/$PLATFORM/remote" >> "$GITHUB_OUTPUT"
-        echo "cocos_ver=$cocos_ver" >> "$GITHUB_OUTPUT"
-        echo "cocos_exe=C:\\ProgramData\\cocos\\editors\\Creator\\$cocos_ver\\CocosCreator.exe" >> "$GITHUB_OUTPUT"
+        echo "cocos_version=$cocos_version" >> "$GITHUB_OUTPUT"
+        echo "cocos_exe=C:\\ProgramData\\cocos\\editors\\Creator\\$cocos_version\\CocosCreator.exe" >> "$GITHUB_OUTPUT"
         echo "app_sn=$app_sn" >> "$GITHUB_OUTPUT"
 
     - name: Create Cocos build config
@@ -224,9 +224,11 @@ runs:
           type=raw,value=${{ steps.env.outputs.image_tag }}
         labels: |
           org.opencontainers.image.ref.name=${{ steps.resolve-branch-head.outputs.branch_name }}
+          build.cocos_version=${{ steps.env.outputs.cocos_version }}
           build.platform=${{ steps.env.outputs.platform }}
           build.env=${{ inputs.build_env }}
           build.debug=${{ inputs.debug }}
+          app.version=${{ inputs.app_version }}
           app.sn=${{ steps.env.outputs.app_sn }}
           ${{ inputs.extra_image_labels }}
 
