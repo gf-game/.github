@@ -53,9 +53,18 @@ outputs:
   project_name:
     description: Docker Compose project name for this env/branch deployment
     value: ${{ steps.vars.outputs.project_name }}
+  app_version:
+    description: Version of the app the web client image was built for (from the image's app.version label)
+    value: ${{ steps.vars.outputs.app_version }}
   app_sn:
     description: App SN of the image
     value: ${{ steps.vars.outputs.app_sn }}
+  platform:
+    description: Cocos Creator build platform of the web client image (from the image's build.platform label)
+    value: ${{ steps.vars.outputs.platform }}
+  cocos_version:
+    description: Version of Cocos Creator the web client image was built with (from the image's build.cocos_version label)
+    value: ${{ steps.vars.outputs.cocos_version }}
   bundle_registry_sn:
     description: Bundle registry SN for the app in the given environment
     value: ${{ steps.vars.outputs.bundle_registry_sn }}
@@ -110,12 +119,33 @@ runs:
         image_tag: ${{ inputs.image_tag }}
         label: org.opencontainers.image.ref.name
 
+    - name: Fetch app version from image label
+      id: app_version
+      uses: gf-game/.github/.github/actions/docker/fetch-image-label-value@754023ba96851427375d6bfff07ebd6394e772b1
+      with:
+        image_tag: ${{ inputs.image_tag }}
+        label: app.version
+
     - name: Fetch app SN from image label
       id: app_sn
       uses: gf-game/.github/.github/actions/docker/fetch-image-label-value@754023ba96851427375d6bfff07ebd6394e772b1
       with:
         image_tag: ${{ inputs.image_tag }}
         label: app.sn
+
+    - name: Fetch build platform from image label
+      id: platform
+      uses: gf-game/.github/.github/actions/docker/fetch-image-label-value@754023ba96851427375d6bfff07ebd6394e772b1
+      with:
+        image_tag: ${{ inputs.image_tag }}
+        label: build.platform
+
+    - name: Fetch cocos creator version from image label
+      id: cocos_version
+      uses: gf-game/.github/.github/actions/docker/fetch-image-label-value@754023ba96851427375d6bfff07ebd6394e772b1
+      with:
+        image_tag: ${{ inputs.image_tag }}
+        label: build.cocos_version
 
     - name: Resolve deployment names, paths, and config
       id: vars
@@ -124,7 +154,10 @@ runs:
         SRC_REPO: ${{ steps.src_repo.outputs.value }}
         SRC_BRANCH: ${{ steps.src_branch.outputs.value }}
         ENV_NAME: ${{ inputs.env_name }}
+        APP_VERSION: ${{ steps.app_version.outputs.value }}
         APP_SN: ${{ steps.app_sn.outputs.value }}
+        PLATFORM: ${{ steps.platform.outputs.value }}
+        COCOS_VERSION: ${{ steps.cocos_version.outputs.value }}
         DEPLOY_FILE_ROOT: ${{ inputs.web_deploy_file_root }}
         BUNDLE_FILE_ROOT: ${{ inputs.remote_bundle_file_root }}
         APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
@@ -137,9 +170,11 @@ runs:
         NGINX_SERVER_CONFIG_TEMPLATE: ${{ inputs.nginx_server_config_template }}
         PATH_LIB: ${{ github.action_path }}/../../../../util/bash-libs/path.sh
         STRING_LIB: ${{ github.action_path }}/../../../../util/bash-libs/string.sh
+        SEMVER_LIB: ${{ github.action_path }}/../../../../util/bash-libs/semver.sh
       run: |
         source "$PATH_LIB"
         source "$STRING_LIB"
+        source "$SEMVER_LIB"
 
         # Slugify the repo name
         SRC_REPO="${SRC_REPO##*/}"
@@ -156,6 +191,20 @@ runs:
         bundle_registry_sn="$(printf '%s' "${APP_SN}|${ENV_NAME}" | sha256sum | cut -d ' ' -f1)"
         echo "app_sn=${APP_SN}" >> "$GITHUB_OUTPUT"
         echo "bundle_registry_sn=${bundle_registry_sn}" >> "$GITHUB_OUTPUT"
+
+        # Validate and output app version
+        APP_VERSION=$(trim_non_empty APP_VERSION)
+        validate_semver APP_VERSION
+        echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+
+        # Validate and output platform
+        PLATFORM=$(trim_non_empty PLATFORM)
+        echo "platform=${PLATFORM}" >> "$GITHUB_OUTPUT"
+
+        # Validate and output cocos version
+        COCOS_VERSION=$(trim_non_empty COCOS_VERSION)
+        validate_semver COCOS_VERSION
+        echo "cocos_version=${COCOS_VERSION}" >> "$GITHUB_OUTPUT"
 
         # Compute name of the docker compose project
         env_slug=$(slugify ENV_NAME)
@@ -174,15 +223,15 @@ runs:
         deploy_file_dir=$(validate_abs_path deploy_file_dir)
         echo "deploy_file_dir=${deploy_file_dir}" >> "$GITHUB_OUTPUT"
 
-        # Fetch path of the root directory for the app configurations
+        # Validate path of the root directory for the app configurations
         APP_CONFIG_ROOT=$(validate_abs_path APP_CONFIG_ROOT)
         echo "app_config_root=${APP_CONFIG_ROOT}" >> "$GITHUB_OUTPUT"
 
-        # Fetch path of the root directory for the nginx configurations
+        # Validate path of the root directory for the nginx configurations
         NGINX_CONF_ROOT=$(validate_abs_path NGINX_CONF_ROOT)
         echo "nginx_conf_root=${NGINX_CONF_ROOT}" >> "$GITHUB_OUTPUT"
 
-        # Fetch the urls
+        # Trim and validate the urls aren't empty
         # Since those urls may contains placeholders in the form of '<placeholder-name>'
         # and the character '<' and '>' is not valid http(s) url characters, postpone the
         # http-url validation after the placeholders are substituted with the real value.
@@ -193,7 +242,7 @@ runs:
         echo "game_server_url=${GAME_SERVER_URL}" >> "$GITHUB_OUTPUT"
         echo "bundle_cdn_url=${BUNDLE_CDN_URL}" >> "$GITHUB_OUTPUT"
 
-        # Fetch suffix of the self-hosted server domain
+        # Validate suffix of the self-hosted server domain
         SERVER_DOMAIN_SUFFIX=$(trim_non_empty SERVER_DOMAIN_SUFFIX)
         echo "server_domain_suffix=$SERVER_DOMAIN_SUFFIX" >> "$GITHUB_OUTPUT"
 
