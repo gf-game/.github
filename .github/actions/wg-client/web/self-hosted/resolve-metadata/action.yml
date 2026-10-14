@@ -171,10 +171,12 @@ runs:
         PATH_LIB: ${{ github.action_path }}/../../../../util/bash-libs/path.sh
         STRING_LIB: ${{ github.action_path }}/../../../../util/bash-libs/string.sh
         SEMVER_LIB: ${{ github.action_path }}/../../../../util/bash-libs/semver.sh
+        PLATFORM_LIB: ${{ github.action_path }}/../../bash-lib/platform.sh
       run: |
         source "$PATH_LIB"
         source "$STRING_LIB"
         source "$SEMVER_LIB"
+        source "$PLATFORM_LIB"
 
         # Slugify the repo name
         SRC_REPO="${SRC_REPO##*/}"
@@ -199,6 +201,7 @@ runs:
 
         # Validate and output platform
         PLATFORM=$(trim_non_empty PLATFORM)
+        validate_platform PLATFORM
         echo "platform=${PLATFORM}" >> "$GITHUB_OUTPUT"
 
         # Validate and output cocos version
