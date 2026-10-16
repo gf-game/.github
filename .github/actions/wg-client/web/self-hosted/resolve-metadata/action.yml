@@ -12,8 +12,11 @@ inputs:
   web_deploy_file_root:
     description: Root directory on the deploy host where each env/branch pair's deployment state lives
     required: true
-  remote_bundle_file_root:
-    description: Root directory on the host where remote bundles are stored
+  bundle_root:
+    description: Root directory on the host where bundles are stored
+    required: true
+  bundle_link_root:
+    description: Root directory on the host where bundle links are stored
     required: true
   app_config_root:
     description: Root directory on the host where app config files are stored
@@ -74,12 +77,15 @@ outputs:
   deploy_file_dir:
     description: Directory on the deploy host holding this env/branch pair's deployment state
     value: ${{ steps.vars.outputs.deploy_file_dir }}
-  bundle_file_dir:
-    description: Directory on the host where remote bundles are stored
-    value: ${{ steps.vars.outputs.bundle_file_dir }}
   app_config:
     description: App config
     value: ${{ steps.vars.outputs.app_config }}
+  bundle_root:
+    description: Root directory on the host where bundles are stored
+    value: ${{ steps.vars.outputs.bundle_root }}
+  bundle_link_root:
+    description: Root directory on the host where bundle links are stored
+    value: ${{ steps.vars.outputs.bundle_link_root }}
   app_config_root:
     description: Root directory on the host where app config files are stored
     value: ${{ steps.vars.outputs.app_config_root }}
@@ -165,7 +171,8 @@ runs:
         PLATFORM: ${{ steps.platform.outputs.value }}
         COCOS_VERSION: ${{ steps.cocos_version.outputs.value }}
         DEPLOY_FILE_ROOT: ${{ inputs.web_deploy_file_root }}
-        BUNDLE_FILE_ROOT: ${{ inputs.remote_bundle_file_root }}
+        BUNDLE_ROOT: ${{ inputs.bundle_root }}
+        BUNDLE_LINK_ROOT: ${{ inputs.bundle_link_root }}
         APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
         APP_CONFIG_LINK_ROOT: ${{ inputs.app_config_link_root }}
         PORTAL_URL: ${{ inputs.portal_url }}
@@ -221,17 +228,19 @@ runs:
         echo "env_slug=${env_slug}" >> "$GITHUB_OUTPUT"
         echo "project_name=${repo_slug}-${env_slug}-${branch_slug}-web" >> "$GITHUB_OUTPUT"
 
-        # Compute path of the directory for the bundle files
-        BUNDLE_FILE_ROOT=$(validate_abs_path BUNDLE_FILE_ROOT)
-        bundle_file_dir="${BUNDLE_FILE_ROOT}/${bundle_registry_sn}"
-        bundle_file_dir=$(validate_abs_path bundle_file_dir)
-        echo "bundle_file_dir=${bundle_file_dir}" >> "$GITHUB_OUTPUT"
-
         # Compute path of the directory for the deployment files
         DEPLOY_FILE_ROOT=$(validate_abs_path DEPLOY_FILE_ROOT)
         deploy_file_dir="${DEPLOY_FILE_ROOT}/${env_slug}/${branch_slug}"
         deploy_file_dir=$(validate_abs_path deploy_file_dir)
         echo "deploy_file_dir=${deploy_file_dir}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the bundles
+        BUNDLE_ROOT=$(validate_abs_path BUNDLE_ROOT)
+        echo "bundle_root=${BUNDLE_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the bundle links
+        BUNDLE_LINK_ROOT=$(validate_abs_path BUNDLE_LINK_ROOT)
+        echo "bundle_link_root=${BUNDLE_LINK_ROOT}" >> "$GITHUB_OUTPUT"
 
         # Validate path of the root directory for the app configurations
         APP_CONFIG_ROOT=$(validate_abs_path APP_CONFIG_ROOT)
