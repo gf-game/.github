@@ -72,7 +72,7 @@ jobs:
           deploy_file_dir: ${{ steps.metadata.outputs.deploy_file_dir }}
 
       - name: Deploy
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@5e472c56610fec22f67849c9a2f5cc668a881ba1
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@72c835012e4ae798fcc0745cbb2274920b343d96
         with:
           project_name: ${{ steps.metadata.outputs.project_name }}
           compose_file: ${{ steps.files.outputs.compose_file }}
@@ -85,7 +85,8 @@ jobs:
           cocos_version: ${{ steps.metadata.outputs.cocos_version }}
           platform: ${{ steps.metadata.outputs.platform }}
           app_version: ${{ steps.metadata.outputs.app_version }}
-          bundle_file_dir: ${{ steps.metadata.outputs.bundle_file_dir }}
+          bundle_root: ${{ steps.metadata.outputs.bundle_root }}
+          bundle_link_root: ${{ steps.metadata.outputs.bundle_link_root }}
           bundle_registry_sn: ${{ steps.metadata.outputs.bundle_registry_sn }}
           bundle_artifact_name: ${{ inputs.bundle_artifact_name }}
           app_sn: ${{ steps.metadata.outputs.app_sn }}
