@@ -47,13 +47,14 @@ jobs:
 
       - name: Resolve metadata
         id: metadata
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@faeac0585e785b7506d0d5e29e241b097efa9be1
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@5e472c56610fec22f67849c9a2f5cc668a881ba1
         with:
           image_tag: ${{ inputs.image_tag }}
           env_name: ${{ inputs.deploy_env }}
           web_deploy_file_root: ${{ vars.WEB_DEPLOY_FILE_ROOT }}
           remote_bundle_file_root: ${{ vars.REMOTE_BUNDLE_FILE_ROOT }}
           app_config_root: ${{ vars.APP_CONFIG_ROOT }}
+          app_config_link_root: ${{ vars.APP_CONFIG_LINK_ROOT }}
           nginx_conf_root: ${{ vars.NGINX_CONF_ROOT }}
           portal_url: ${{ vars.PORTAL_URL }}
           game_server_url: ${{ vars.GAME_SERVER_URL }}
@@ -70,7 +71,7 @@ jobs:
           deploy_file_dir: ${{ steps.metadata.outputs.deploy_file_dir }}
 
       - name: Deploy
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@769153c191c1bae1fe159f58566faa4a5416c399
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy@5e472c56610fec22f67849c9a2f5cc668a881ba1
         with:
           project_name: ${{ steps.metadata.outputs.project_name }}
           compose_file: ${{ steps.files.outputs.compose_file }}
@@ -80,11 +81,15 @@ jobs:
           env_slug: ${{ steps.metadata.outputs.env_slug }}
           repo_slug: ${{ steps.metadata.outputs.repo_slug }}
           branch_slug: ${{ steps.metadata.outputs.branch_slug }}
+          cocos_version: ${{ steps.metadata.outputs.cocos_version }}
+          platform: ${{ steps.metadata.outputs.platform }}
+          app_version: ${{ steps.metadata.outputs.app_version }}
           bundle_file_dir: ${{ steps.metadata.outputs.bundle_file_dir }}
           bundle_registry_sn: ${{ steps.metadata.outputs.bundle_registry_sn }}
           bundle_artifact_name: ${{ inputs.bundle_artifact_name }}
           app_sn: ${{ steps.metadata.outputs.app_sn }}
           app_config: ${{ steps.metadata.outputs.app_config }}
+          app_config_link_root: ${{ steps.metadata.outputs.app_config_link_root }}
           app_config_root: ${{ steps.metadata.outputs.app_config_root }}
           portal_url: ${{ steps.metadata.outputs.portal_url }}
           game_server_url: ${{ steps.metadata.outputs.game_server_url }}
