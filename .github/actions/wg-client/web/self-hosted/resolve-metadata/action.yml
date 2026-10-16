@@ -18,6 +18,9 @@ inputs:
   app_config_root:
     description: Root directory on the host where app config files are stored
     required: true
+  app_config_link_root:
+    description: Root directory on the host where app config links are stored
+    required: true
   nginx_conf_root:
     description: Directory on the deploy host holding nginx server block configs
     required: true
@@ -80,6 +83,9 @@ outputs:
   app_config_root:
     description: Root directory on the host where app config files are stored
     value: ${{ steps.vars.outputs.app_config_root }}
+  app_config_link_root:
+    description: Root directory on the host where app config links are stored
+    value: ${{ steps.vars.outputs.app_config_link_root }}
   portal_url:
     description: URL of the portal to add to the app config
     value: ${{ steps.vars.outputs.portal_url }}
@@ -161,6 +167,7 @@ runs:
         DEPLOY_FILE_ROOT: ${{ inputs.web_deploy_file_root }}
         BUNDLE_FILE_ROOT: ${{ inputs.remote_bundle_file_root }}
         APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
+        APP_CONFIG_LINK_ROOT: ${{ inputs.app_config_link_root }}
         PORTAL_URL: ${{ inputs.portal_url }}
         GAME_SERVER_URL: ${{ inputs.game_server_url }}
         BUNDLE_CDN_URL: ${{ inputs.bundle_cdn_url }}
@@ -229,6 +236,10 @@ runs:
         # Validate path of the root directory for the app configurations
         APP_CONFIG_ROOT=$(validate_abs_path APP_CONFIG_ROOT)
         echo "app_config_root=${APP_CONFIG_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the app configuration links
+        APP_CONFIG_LINK_ROOT=$(validate_abs_path APP_CONFIG_LINK_ROOT)
+        echo "app_config_link_root=${APP_CONFIG_LINK_ROOT}" >> "$GITHUB_OUTPUT"
 
         # Validate path of the root directory for the nginx configurations
         NGINX_CONF_ROOT=$(validate_abs_path NGINX_CONF_ROOT)
