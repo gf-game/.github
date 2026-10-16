@@ -1,0 +1,93 @@
+name: Deploy web client bundle
+description: Download the built bundle artifact and sync it into the live bundle directory
+
+inputs:
+  bundle_registry_sn:
+    description: Bundle registry sn
+    required: true
+  bundle_root:
+    description: Root directory on host where bundles should go to
+    required: true
+  bundle_link_root:
+    description: Root directory on host where bundle links should go to
+    required: true
+  bundle_artifact_name:
+    description: The name of bundle artifact file
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  cocos_version:
+    description: Version of Cocos Creator the web client
+    required: true
+  platform:
+    description: Cocos Creator build platform of the web client
+    required: true
+  app_version:
+    description: Version of the app the web client
+    required: true
+  env_slug:
+    description: Slug of the environment being deployed into
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download bundle artifact
+      id: download
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.bundle_artifact_name }}
+        path: ${{ runner.temp }}/bundle-download
+
+    - name: Sync bundles
+      id: sync_bundle
+      shell: bash
+      env:
+        DEST_ROOT: ${{ inputs.bundle_root }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        COCOS_VERSION: ${{ inputs.cocos_version }}
+        PLATFORM: ${{ inputs.platform }}
+        APP_VERSION: ${{ inputs.app_version }}
+        ENV_SLUG: ${{ inputs.env_slug }}
+        SRC_DIR: ${{ steps.download.outputs.download-path }}
+        BUNDLE_LIB: ${{ github.action_path }}/../../bash-lib/bundle.sh
+      run: |
+        shopt -s nullglob
+        source "${BUNDLE_LIB}"
+
+        dest_dir=$(make_bundle_dir "$DEST_ROOT" "$REPO_SLUG" "$BRANCH_SLUG" \
+          "$COCOS_VERSION" "$PLATFORM" "$APP_VERSION" "$ENV_SLUG")
+
+        for bundle_dir in "${SRC_DIR}"/*/; do
+          bundle_name="$(basename "${bundle_dir}")"
+          dest_bundle_dir="${dest_dir}/${bundle_name}"
+          mkdir -p "${dest_bundle_dir}"
+
+          rsync -a "${bundle_dir}" "${dest_bundle_dir}/"
+        done
+
+        echo "dest_dir=${dest_dir}" >> "$GITHUB_OUTPUT"
+
+    - name: Sync bundle catalog
+      shell: bash
+      env:
+        DEST_DIR: ${{ steps.sync_bundle.outputs.dest_dir }}
+        SRC_DIR: ${{ steps.download.outputs.download-path }}
+      run: |
+        rsync -a "${SRC_DIR}/catalog.json" "${DEST_DIR}/catalog.json"
+
+    - name: Create link
+      shell: bash
+      env:
+        DEST_DIR: ${{ steps.sync_bundle.outputs.dest_dir }}
+        LINK_ROOT: ${{ inputs.bundle_link_root }}
+        BUNDLE_REGISTRY_SN: ${{ inputs.bundle_registry_sn }}
+        BUNDLE_LIB: ${{ github.action_path }}/../../bash-lib/bundle.sh
+      run: |
+        source "${BUNDLE_LIB}"
+        make_bundle_dir_link "${LINK_ROOT}" "${BUNDLE_REGISTRY_SN}" "${DEST_DIR}"
