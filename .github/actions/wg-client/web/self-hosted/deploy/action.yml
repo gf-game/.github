@@ -35,8 +35,11 @@ inputs:
   app_version:
     description: Version of the app the web client image was built for
     required: true
-  bundle_file_dir:
-    description: The file directory where the bundles should go to
+  bundle_root:
+    description: Root directory on host where bundles should go to
+    required: true
+  bundle_link_root:
+    description: Root directory on host where bundle links should go to
     required: true
   bundle_registry_sn:
     description: Bundle registry sn
@@ -118,12 +121,20 @@ runs:
         echo "web=${web_port}" >> "$GITHUB_OUTPUT"
         echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable on host port \`${web_port}\`" >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Deploy remote bundles
+    - name: Deploy bundles
       if: inputs.bundle_artifact_name != ''
-      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-bundles@5d25f61e497f5ad0baa1d704568117eb3f453098
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-bundle@4fa02c60f97108af3d0ed6d8338a943fdeda1b2e
       with:
-        bundle_file_dir: ${{ inputs.bundle_file_dir }}
+        bundle_registry_sn: ${{ inputs.bundle_registry_sn }}
+        bundle_root: ${{ inputs.bundle_root }}
+        bundle_link_root: ${{ inputs.bundle_link_root }}
         bundle_artifact_name: ${{ inputs.bundle_artifact_name }}
+        repo_slug: ${{ inputs.repo_slug }}
+        branch_slug: ${{ inputs.branch_slug }}
+        cocos_version: ${{ inputs.cocos_version }}
+        platform: ${{ inputs.platform }}
+        app_version: ${{ inputs.app_version }}
+        env_slug: ${{ inputs.env_slug }}
 
     - name: Deploy app config
       uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-app-config@75de4ea9b45cf370a741e4bda1112e67fc4cff5e
