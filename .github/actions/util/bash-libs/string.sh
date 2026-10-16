@@ -64,3 +64,49 @@ trim_non_empty() {
 
     printf '%s' "${value}"
 }
+
+# Usage: validate_json_object VAR_NAME
+# Validate $VAR_NAME is a json object.
+validate_json_object() {
+    local var_name="$1"
+
+    # Guard the indirect expansion below: an invalid name is a fatal expansion error
+    # that exits the whole (non-interactive) shell instead of returning non-zero.
+    local name_pattern='^[A-Za-z_][A-Za-z0-9_]*$'
+    if [[ ! "${var_name}" =~ $name_pattern ]]; then
+        echo "::error::validate_json_object: '${var_name}' is not a valid variable name (pass the name, not the value)" >&2
+        return 1
+    fi
+
+    local value="${!var_name:-}"
+
+    # Slurp the input into an array so exactly one JSON document is required:
+    # empty/whitespace-only input yields [] and multiple concatenated documents yield
+    # more than one element. That document must then be an object.
+    if ! printf '%s' "${value}" | jq -e -s 'length == 1 and (.[0] | type == "object")' > /dev/null 2>&1; then
+        echo "::error::validate_json_object: ${var_name} is not a single valid JSON object" >&2
+        return 1
+    fi
+}
+
+# Usage: validate_file_name VAR_NAME
+# Validate $VAR_NAME is a non-empty string of only letters, digits, '.', '_' and '-'.
+validate_file_name() {
+    local var_name="$1"
+
+    # Guard the indirect expansion below: an invalid name is a fatal expansion error
+    # that exits the whole (non-interactive) shell instead of returning non-zero.
+    local name_pattern='^[A-Za-z_][A-Za-z0-9_]*$'
+    if [[ ! "${var_name}" =~ $name_pattern ]]; then
+        echo "::error::validate_file_name: '${var_name}' is not a valid variable name (pass the name, not the value)" >&2
+        return 1
+    fi
+
+    local value="${!var_name:-}"
+
+    local pattern='^[A-Za-z0-9._-]+$'
+    if [[ ! "${value}" =~ $pattern ]]; then
+        echo "::error::validate_file_name: ${var_name}='${value}' doesn't match the pattern ${pattern}" >&2
+        return 1
+    fi
+}
