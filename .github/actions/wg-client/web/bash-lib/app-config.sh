@@ -93,8 +93,14 @@ make_app_config_link() {
     # Create the root directory, if it's not there yet.
     mkdir -p "${root}" || return 1
 
-    # Create the link
-    ln -sfn "${target}" "${link_path}" || return 1
+    # Create the link under a temp name and rename it over the old one, so the link is never missing.
+    # -T makes mv fail instead of moving the temp link into ${link_path} if that's a real directory.
+    local temp_link="${link_path}.tmp.$$"
+    ln -sfn "${target}" "${temp_link}" || return 1
+    if ! mv -Tf "${temp_link}" "${link_path}"; then
+        rm -f "${temp_link}"
+        return 1
+    fi
 
     # Output the link path
     printf '%s' "${link_path}"
