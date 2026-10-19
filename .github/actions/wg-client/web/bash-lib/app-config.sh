@@ -105,3 +105,24 @@ make_app_config_link() {
     # Output the link path
     printf '%s' "${link_path}"
 }
+
+# Usage: dir=$(get_app_config_branch_dir "${app_config_root}" "${repo_slug}" "${branch_slug}")
+# Prints <app_config_root>/<repo_slug>/<branch_slug>, the directory holding every app config directory
+# make_app_config_dir creates for that repo/branch (without a trailing slash). Doesn't create it.
+# app_config_root must be a safe absolute path, and repo_slug and branch_slug must be valid file names.
+# Fails if any of them is invalid.
+get_app_config_branch_dir() {
+    local app_config_root="$1"
+    app_config_root="$(validate_abs_path app_config_root)" || return 1
+
+    local repo_slug="$2"
+    validate_file_name repo_slug || return 1
+
+    local branch_slug="$3"
+    validate_file_name branch_slug || return 1
+
+    local dir="${app_config_root}/${repo_slug}/${branch_slug}"
+    dir="$(validate_abs_path dir)" || return 1
+
+    printf '%s' "${dir}"
+}
