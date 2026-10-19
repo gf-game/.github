@@ -123,7 +123,7 @@ runs:
 
     - name: Deploy bundles
       if: inputs.bundle_artifact_name != ''
-      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-bundle@4fa02c60f97108af3d0ed6d8338a943fdeda1b2e
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-bundle@a305e406277c2a68a2b1aeb65cd923a8bfdb33f8
       with:
         bundle_registry_sn: ${{ inputs.bundle_registry_sn }}
         bundle_root: ${{ inputs.bundle_root }}
