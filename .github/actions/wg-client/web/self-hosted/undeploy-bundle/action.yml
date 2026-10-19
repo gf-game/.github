@@ -1,0 +1,74 @@
+name: Undeploy web client bundle
+description: Undeploy all the deployed bundles of a given repo/branch
+
+inputs:
+  bundle_root:
+    description: Root directory on host where bundles should go to
+    required: true
+  bundle_link_root:
+    description: Root directory on host where bundle links should go to
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve bundle directory
+      id: resolve
+      shell: bash
+      env:
+        BUNDLE_ROOT: ${{ inputs.bundle_root }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        BUNDLE_LIB: ${{ github.action_path }}/../../bash-lib/bundle.sh
+      run: |
+        source "${BUNDLE_LIB}"
+
+        branch_dir=$(get_bundle_branch_dir "$BUNDLE_ROOT" "$REPO_SLUG" "$BRANCH_SLUG")
+
+        echo "branch_dir=${branch_dir}" >> "$GITHUB_OUTPUT"
+
+    # Remove the links first, so none is left dangling once the bundles are gone
+    - name: Remove links
+      shell: bash
+      env:
+        BRANCH_DIR: ${{ steps.resolve.outputs.branch_dir }}
+        LINK_ROOT: ${{ inputs.bundle_link_root }}
+        PATH_LIB: ${{ github.action_path }}/../../../../util/bash-libs/path.sh
+      run: |
+        shopt -s nullglob
+        source "${PATH_LIB}"
+
+        link_root="$(validate_abs_path LINK_ROOT)"
+
+        # Links are created with the absolute bundle dir as their target (see ../deploy-bundle),
+        # so the raw target tells whether a link points into this repo/branch, even if it's dangling.
+        for link in "${link_root}"/*; do
+          [ -L "${link}" ] || continue
+
+          target="$(readlink "${link}")"
+          if [[ "${target}" == "${BRANCH_DIR}" || "${target}" == "${BRANCH_DIR}/"* ]]; then
+            echo "Removing link ${link} -> ${target}"
+            rm -f "${link}"
+          fi
+        done
+
+    - name: Remove bundles
+      shell: bash
+      env:
+        BRANCH_DIR: ${{ steps.resolve.outputs.branch_dir }}
+      run: |
+        if [ -e "${BRANCH_DIR}" ]; then
+          echo "Removing ${BRANCH_DIR}"
+          rm -rf -- "${BRANCH_DIR}"
+        else
+          echo "Nothing deployed at ${BRANCH_DIR}"
+        fi
+
+        # Drop the repo directory too, once its last branch is gone
+        rmdir --ignore-fail-on-non-empty -- "$(dirname "${BRANCH_DIR}")" 2>/dev/null || true
