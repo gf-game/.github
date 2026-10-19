@@ -73,13 +73,22 @@ runs:
 
         echo "dest_dir=${dest_dir}" >> "$GITHUB_OUTPUT"
 
-    - name: Sync bundle catalog
+    - name: Stamp and sync bundle catalog
       shell: bash
       env:
         DEST_DIR: ${{ steps.sync_bundle.outputs.dest_dir }}
         SRC_DIR: ${{ steps.download.outputs.download-path }}
+        BUNDLE_REGISTRY_SN: ${{ inputs.bundle_registry_sn }}
       run: |
-        rsync -a "${SRC_DIR}/catalog.json" "${DEST_DIR}/catalog.json"
+        src_catalog="${SRC_DIR}/catalog.json"
+        dest_catalog="${DEST_DIR}/catalog.json"
+        tmp_catalog="$(mktemp)"
+        trap 'rm -f "${tmp_catalog}"' EXIT
+        jq --arg registry_sn "${BUNDLE_REGISTRY_SN}" '.registry_sn = $registry_sn' \
+          "${src_catalog}" > "${tmp_catalog}"
+
+        # mktemp creates files as 0600; override so the web server can read the catalog
+        rsync -a --chmod=F644 "${tmp_catalog}" "${dest_catalog}"
 
     - name: Create link
       shell: bash
