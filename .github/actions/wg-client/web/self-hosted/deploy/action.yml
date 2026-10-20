@@ -82,23 +82,11 @@ runs:
   using: composite
   steps:
     - name: Deploy with Docker Compose
-      shell: bash
-      env:
-        PROJECT_NAME: ${{ inputs.project_name }}
-        COMPOSE_FILE: ${{ inputs.compose_file }}
-        DOT_ENV_FILE: ${{ inputs.dot_env_file }}
-      run: |
-        docker compose \
-          --project-name "${PROJECT_NAME}" \
-          --env-file "${DOT_ENV_FILE}" \
-          -f "${COMPOSE_FILE}" \
-          pull
-
-        docker compose \
-          --project-name "${PROJECT_NAME}" \
-          --env-file "${DOT_ENV_FILE}" \
-          -f "${COMPOSE_FILE}" \
-          up -d --remove-orphans
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-container@a46019f574b610e184b78c0d4ab7013e9ba8cd53
+      with:
+        project_name: ${{ inputs.project_name }}
+        compose_file: ${{ inputs.compose_file }}
+        dot_env_file: ${{ inputs.dot_env_file }}
 
     - name: Record assigned host port
       id: ports
@@ -155,24 +143,14 @@ runs:
         platform: ${{ inputs.platform }}
         app_version: ${{ inputs.app_version }}
 
-    - name: Configure reverse proxy server
-      shell: bash
-      env:
-        NGINX_SERVER_CONFIG_TEMPLATE: ${{ inputs.nginx_server_config_template }}
-        SERVER_DOMAIN_SUFFIX: ${{ inputs.server_domain_suffix }}
-        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
-        REPO_SLUG: ${{ inputs.repo_slug }}
-        BRANCH_SLUG: ${{ inputs.branch_slug }}
-        ENV_SLUG: ${{ inputs.env_slug }}
-        ENV_NAME: ${{ inputs.env_name }}
-        WEB_PORT: ${{ steps.ports.outputs.web }}
-      run: |
-        server_domain="${BRANCH_SLUG}.${ENV_SLUG}.${REPO_SLUG}-web.${SERVER_DOMAIN_SUFFIX}"
-        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}-web_${ENV_SLUG}_${BRANCH_SLUG}.conf"
-
-        printf "${NGINX_SERVER_CONFIG_TEMPLATE}\n" "${server_domain}" "${WEB_PORT}" | sudo tee "${conf_file}" > /dev/null
-
-        sudo nginx -t
-        sudo nginx -s reload
-
-        echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable at \`${server_domain}\`" >> "$GITHUB_STEP_SUMMARY"
+    - name: Deploy reverse proxy
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-reverse-proxy@a46019f574b610e184b78c0d4ab7013e9ba8cd53
+      with:
+        nginx_server_config_template: ${{ inputs.nginx_server_config_template }}
+        server_domain_suffix: ${{ inputs.server_domain_suffix }}
+        nginx_conf_root: ${{ inputs.nginx_conf_root }}
+        repo_slug: ${{ inputs.repo_slug }}
+        branch_slug: ${{ inputs.branch_slug }}
+        env_slug: ${{ inputs.env_slug }}
+        env_name: ${{ inputs.env_name }}
+        web_port: ${{ steps.ports.outputs.web }}
