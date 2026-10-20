@@ -1,0 +1,35 @@
+name: Deploy web client container on self-hosted server
+description: Pull and start the web client container with Docker Compose
+
+inputs:
+  project_name:
+    description: Docker Compose project name for this env/branch deployment
+    required: true
+  compose_file:
+    description: Path to the docker-compose.yml file to deploy
+    required: true
+  dot_env_file:
+    description: Path to the .env used by docker compose
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy with Docker Compose
+      shell: bash
+      env:
+        PROJECT_NAME: ${{ inputs.project_name }}
+        COMPOSE_FILE: ${{ inputs.compose_file }}
+        DOT_ENV_FILE: ${{ inputs.dot_env_file }}
+      run: |
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DOT_ENV_FILE}" \
+          -f "${COMPOSE_FILE}" \
+          pull
+
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          --env-file "${DOT_ENV_FILE}" \
+          -f "${COMPOSE_FILE}" \
+          up -d --remove-orphans
