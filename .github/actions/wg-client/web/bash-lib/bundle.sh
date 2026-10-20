@@ -78,3 +78,23 @@ make_bundle_dir_link() {
     # Output the path of the link
     printf '%s' "${link}"
 }
+
+# Usage: dir=$(get_bundle_branch_dir "${root}" "${repo_slug}" "${branch_slug}")
+# Prints <root>/<repo_slug>/<branch_slug>, the directory holding every bundle make_bundle_dir creates
+# for that repo/branch (without a trailing slash). Doesn't create it. root must be a safe absolute path,
+# and repo_slug and branch_slug must be valid file names. Fails if any of them is invalid.
+get_bundle_branch_dir() {
+    local root="$1"
+    root="$(validate_abs_path root)" || return 1
+
+    local repo_slug="$2"
+    validate_file_name repo_slug || return 1
+
+    local branch_slug="$3"
+    validate_file_name branch_slug || return 1
+
+    local dir="${root}/${repo_slug}/${branch_slug}"
+    dir="$(validate_abs_path dir)" || return 1
+
+    printf '%s' "${dir}"
+}
