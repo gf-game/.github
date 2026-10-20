@@ -1,0 +1,53 @@
+name: Deploy reverse proxy server config
+description: Configure an nginx server block routing the env/branch domain to the deployed web client
+
+inputs:
+  nginx_server_config_template:
+    description: printf template for the nginx server block config
+    required: true
+  server_domain_suffix:
+    description: Domain suffix appended to the branch/env/repo subdomain
+    required: true
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  env_slug:
+    description: Slug of the environment being deployed into
+    required: true
+  env_name:
+    description: Environment being deployed into
+    required: true
+  web_port:
+    description: Host port the web client container is reachable on
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Configure reverse proxy server
+      shell: bash
+      env:
+        NGINX_SERVER_CONFIG_TEMPLATE: ${{ inputs.nginx_server_config_template }}
+        SERVER_DOMAIN_SUFFIX: ${{ inputs.server_domain_suffix }}
+        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_SLUG: ${{ inputs.env_slug }}
+        ENV_NAME: ${{ inputs.env_name }}
+        WEB_PORT: ${{ inputs.web_port }}
+      run: |
+        server_domain="${BRANCH_SLUG}.${ENV_SLUG}.${REPO_SLUG}-web.${SERVER_DOMAIN_SUFFIX}"
+        conf_file="${NGINX_CONF_ROOT}/${REPO_SLUG}-web_${ENV_SLUG}_${BRANCH_SLUG}.conf"
+
+        printf "${NGINX_SERVER_CONFIG_TEMPLATE}\n" "${server_domain}" "${WEB_PORT}" | sudo tee "${conf_file}" > /dev/null
+
+        sudo nginx -t
+        sudo nginx -s reload
+
+        echo "Branch \`${BRANCH_SLUG}\` (\`${ENV_NAME}\`) is reachable at \`${server_domain}\`" >> "$GITHUB_STEP_SUMMARY"
