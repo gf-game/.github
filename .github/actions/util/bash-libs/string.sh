@@ -90,7 +90,8 @@ validate_json_object() {
 }
 
 # Usage: validate_file_name VAR_NAME
-# Validate $VAR_NAME is a non-empty string of only letters, digits, '.', '_' and '-'.
+# Validate $VAR_NAME is a non-empty string of only letters, digits, '.', '_' and '-',
+# other than the relative path segments '.' and '..'.
 validate_file_name() {
     local var_name="$1"
 
@@ -107,6 +108,11 @@ validate_file_name() {
     local pattern='^[A-Za-z0-9._-]+$'
     if [[ ! "${value}" =~ $pattern ]]; then
         echo "::error::validate_file_name: ${var_name}='${value}' doesn't match the pattern ${pattern}" >&2
+        return 1
+    fi
+
+    if [[ "${value}" == "." || "${value}" == ".." ]]; then
+        echo "::error::validate_file_name: ${var_name}='${value}' is a relative path segment" >&2
         return 1
     fi
 }

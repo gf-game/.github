@@ -1,0 +1,53 @@
+name: Undeploy reverse proxy server config
+description: Remove the nginx server block routing the env/branch domain to the deployed web client
+
+inputs:
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  env_slug:
+    description: Slug of the environment being undeployed from
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Remove reverse proxy server
+      shell: bash
+      env:
+        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
+        REPO_SLUG: ${{ inputs.repo_slug }}
+        BRANCH_SLUG: ${{ inputs.branch_slug }}
+        ENV_SLUG: ${{ inputs.env_slug }}
+        PATH_LIB: ${{ github.action_path }}/../../../../util/bash-libs/path.sh
+        STRING_LIB: ${{ github.action_path }}/../../../../util/bash-libs/string.sh
+      run: |
+        source "${PATH_LIB}"
+        source "${STRING_LIB}"
+
+        conf_root="$(validate_abs_path NGINX_CONF_ROOT)"
+
+        # The slugs make up the config file name, so keep them from reaching outside conf_root
+        validate_file_name REPO_SLUG
+        validate_file_name BRANCH_SLUG
+        validate_file_name ENV_SLUG
+
+        # Same naming as ../deploy-reverse-proxy
+        conf_file="${conf_root}/${REPO_SLUG}-web_${ENV_SLUG}_${BRANCH_SLUG}.conf"
+
+        if [ ! -e "${conf_file}" ]; then
+          echo "Nothing deployed at ${conf_file}"
+          exit 0
+        fi
+
+        echo "Removing ${conf_file}"
+        sudo rm -f -- "${conf_file}"
+
+        sudo nginx -t
+        sudo nginx -s reload
