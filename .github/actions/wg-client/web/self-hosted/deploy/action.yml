@@ -82,23 +82,11 @@ runs:
   using: composite
   steps:
     - name: Deploy with Docker Compose
-      shell: bash
-      env:
-        PROJECT_NAME: ${{ inputs.project_name }}
-        COMPOSE_FILE: ${{ inputs.compose_file }}
-        DOT_ENV_FILE: ${{ inputs.dot_env_file }}
-      run: |
-        docker compose \
-          --project-name "${PROJECT_NAME}" \
-          --env-file "${DOT_ENV_FILE}" \
-          -f "${COMPOSE_FILE}" \
-          pull
-
-        docker compose \
-          --project-name "${PROJECT_NAME}" \
-          --env-file "${DOT_ENV_FILE}" \
-          -f "${COMPOSE_FILE}" \
-          up -d --remove-orphans
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/deploy-container@a46019f574b610e184b78c0d4ab7013e9ba8cd53
+      with:
+        project_name: ${{ inputs.project_name }}
+        compose_file: ${{ inputs.compose_file }}
+        dot_env_file: ${{ inputs.dot_env_file }}
 
     - name: Record assigned host port
       id: ports
