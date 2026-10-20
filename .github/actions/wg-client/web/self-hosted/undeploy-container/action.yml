@@ -1,0 +1,32 @@
+name: Undeploy web client container on self-hosted server
+description: Stop and remove the web client container started with Docker Compose
+
+inputs:
+  project_name:
+    description: Docker Compose project name for this env/branch deployment
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Compose finds the project's resources by their labels, so neither the compose file nor
+    # the .env used by ../deploy-container needs to still be around (e.g. once the branch is gone).
+    - name: Shut down with Docker Compose
+      shell: bash
+      env:
+        PROJECT_NAME: ${{ inputs.project_name }}
+      run: |
+        if [ -z "${PROJECT_NAME}" ]; then
+          echo "::error::project_name must not be empty"
+          exit 1
+        fi
+
+        if ! docker compose ls --all --quiet | grep -Fxq -- "${PROJECT_NAME}"; then
+          echo "Nothing deployed for project ${PROJECT_NAME}"
+          exit 0
+        fi
+
+        echo "Shutting down project ${PROJECT_NAME}"
+        docker compose \
+          --project-name "${PROJECT_NAME}" \
+          down --volumes --remove-orphans
