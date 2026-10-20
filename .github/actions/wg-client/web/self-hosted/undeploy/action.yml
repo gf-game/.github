@@ -1,0 +1,36 @@
+name: Undeploy web client on self-hosted server
+description: Undeploy web client on self-hosted server
+
+inputs:
+  project_name:
+    description: Docker Compose project name for this env/branch deployment
+    required: true
+  repo_slug:
+    description: URL-safe slug of the source repository
+    required: true
+  branch_slug:
+    description: URL-safe slug of the source branch
+    required: true
+  env_slug:
+    description: Slug of the environment being undeployed from
+    required: true
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Reverse order of ../deploy: stop routing traffic to the container before shutting it down
+    - name: Undeploy reverse proxy
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy-reverse-proxy@73b38a99d18cb0e50e152d00230cd696beb280e1
+      with:
+        nginx_conf_root: ${{ inputs.nginx_conf_root }}
+        repo_slug: ${{ inputs.repo_slug }}
+        branch_slug: ${{ inputs.branch_slug }}
+        env_slug: ${{ inputs.env_slug }}
+
+    - name: Shut down with Docker Compose
+      uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy-container@73b38a99d18cb0e50e152d00230cd696beb280e1
+      with:
+        project_name: ${{ inputs.project_name }}
