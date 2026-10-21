@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Resolve undeploy metadata
         id: metadata
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-undeploy-metadata@d3360ecb0b1430d9ed515e2384b8e1003032be4b
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-undeploy-metadata@6ee215e966e5230d225844dcc0caeb264584343d
         with:
           branch: ${{ inputs.branch }}
           web_deploy_file_root: ${{ vars.WEB_DEPLOY_FILE_ROOT }}
@@ -56,13 +56,14 @@ jobs:
         env: ${{ fromJSON(needs.resolve-metadata.outputs.envs) }}
     steps:
       - name: Undeploy
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy@353b119e4648405e4b6e906de7b8d25eecc32964
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy@6ee215e966e5230d225844dcc0caeb264584343d
         with:
           project_name: ${{ matrix.env.project_name }}
           repo_slug: ${{ needs.resolve-metadata.outputs.repo_slug }}
           branch_slug: ${{ needs.resolve-metadata.outputs.branch_slug }}
           env_slug: ${{ matrix.env.env_slug }}
           nginx_conf_root: ${{ needs.resolve-metadata.outputs.nginx_conf_root }}
+          deploy_file_dir: ${{ matrix.env.deploy_file_dir }}
 
   undeploy-data-service:
     needs: [resolve-metadata, undeploy-container-service]
