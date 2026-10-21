@@ -50,7 +50,8 @@ outputs:
   envs:
     description: >-
       JSON array of the envs the branch is deployed to, each as
-      {"env_slug":"<env-slug>","project_name":"<repo-slug>-<env-slug>-<branch-slug>-web"}
+      {"env_slug":"<env-slug>","project_name":"<repo-slug>-<env-slug>-<branch-slug>-web",
+      "deploy_file_dir":"<web-deploy-file-root>/<env-slug>/<branch-slug>"}
     value: ${{ steps.envs.outputs.envs }}
 
 runs:
@@ -124,16 +125,22 @@ runs:
         # so the deployed envs are the parents of the matching branch directories.
         # The trailing slash restricts the glob to directories.
         shopt -s nullglob
-        env_slugs=()
+        # Each entry is "<env_slug>\t<deploy_file_dir>"
+        env_entries=()
         for dir in "${DEPLOY_FILE_ROOT}"/*/"${BRANCH_SLUG}"/; do
+          deploy_file_dir="${dir%/}"
           env_slug="${dir#"${DEPLOY_FILE_ROOT}/"}"
-          env_slugs+=("${env_slug%%/*}")
+          env_entries+=("${env_slug%%/*}"$'\t'"${deploy_file_dir}")
         done
 
-        envs="$(printf '%s\n' "${env_slugs[@]}" \
+        envs="$(printf '%s\n' "${env_entries[@]}" \
           | jq -Rnc --arg repo_slug "${REPO_SLUG}" --arg branch_slug "${BRANCH_SLUG}" \
-            '[inputs | select(length > 0)
-              | {env_slug: ., project_name: "\($repo_slug)-\(.)-\($branch_slug)-web"}]')"
+            '[inputs | select(length > 0) | split("\t")
+              | {
+                  env_slug: .[0],
+                  project_name: "\($repo_slug)-\(.[0])-\($branch_slug)-web",
+                  deploy_file_dir: .[1]
+                }]')"
 
         echo "Deployed envs of ${REPO_SLUG}/${BRANCH_SLUG}: ${envs}"
         echo "envs=${envs}" >> "$GITHUB_OUTPUT"
