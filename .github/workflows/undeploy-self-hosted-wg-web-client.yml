@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Resolve undeploy metadata
         id: metadata
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-undeploy-metadata@6ee215e966e5230d225844dcc0caeb264584343d
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-undeploy-metadata@098bfe665c2c2155900b1c87c5bed145f4c21244
         with:
           branch: ${{ inputs.branch }}
           web_deploy_file_root: ${{ vars.WEB_DEPLOY_FILE_ROOT }}
