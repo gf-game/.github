@@ -47,7 +47,7 @@ jobs:
 
       - name: Resolve metadata
         id: metadata
-        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@72c835012e4ae798fcc0745cbb2274920b343d96
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-metadata@098bfe665c2c2155900b1c87c5bed145f4c21244
         with:
           image_tag: ${{ inputs.image_tag }}
           env_name: ${{ inputs.deploy_env }}
