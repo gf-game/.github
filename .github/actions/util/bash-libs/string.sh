@@ -40,6 +40,28 @@ slugify() {
     printf '%s' "${slug}"
 }
 
+# Usage: validate_slug VAR_NAME
+# Validate $VAR_NAME is a string containing non-empty runs of lowercase letters/digits separated by single hyphens.
+validate_slug() {
+    local var_name="$1"
+
+    # Guard the indirect expansion below: an invalid name is a fatal expansion error
+    # that exits the whole (non-interactive) shell instead of returning non-zero.
+    local name_pattern='^[A-Za-z_][A-Za-z0-9_]*$'
+    if [[ ! "${var_name}" =~ $name_pattern ]]; then
+        echo "::error::validate_slug: '${var_name}' is not a valid variable name (pass the name, not the value)" >&2
+        return 1
+    fi
+
+    local value="${!var_name:-}"
+
+    local pattern='^[a-z0-9]+(-[a-z0-9]+)*$'
+    if [[ ! "${value}" =~ $pattern ]]; then
+        echo "::error::validate_slug: ${var_name}='${value}' doesn't match the pattern ${pattern}" >&2
+        return 1
+    fi
+}
+
 # Usage: value=$(trim_non_empty VAR_NAME)
 # Prints $VAR_NAME with leading/trailing whitespace trimmed. Fails if the result is empty.
 trim_non_empty() {
