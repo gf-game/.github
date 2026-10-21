@@ -1,0 +1,139 @@
+name: Resolve web client undeployment metadata
+description: |
+  Resolve all the necessary metadata used for undeploying the web client.
+
+inputs:
+  branch:
+    description: Source branch of the target deployments
+    required: true
+  web_deploy_file_root:
+    description: Root directory on the deploy host where each env/branch pair's deployment state lives
+    required: true
+  bundle_root:
+    description: Root directory on the host where bundles are stored
+    required: true
+  bundle_link_root:
+    description: Root directory on the host where bundle links are stored
+    required: true
+  app_config_root:
+    description: Root directory on the host where app config files are stored
+    required: true
+  app_config_link_root:
+    description: Root directory on the host where app config links are stored
+    required: true
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    required: true
+
+outputs:
+  repo_slug:
+    description: URL-safe slug of the repository name
+    value: ${{ steps.vars.outputs.repo_slug }}
+  branch_slug:
+    description: URL-safe slug of the source branch
+    value: ${{ steps.vars.outputs.branch_slug }}
+  bundle_root:
+    description: Root directory on the host where bundles are stored
+    value: ${{ steps.vars.outputs.bundle_root }}
+  bundle_link_root:
+    description: Root directory on the host where bundle links are stored
+    value: ${{ steps.vars.outputs.bundle_link_root }}
+  app_config_root:
+    description: Root directory on the host where app config files are stored
+    value: ${{ steps.vars.outputs.app_config_root }}
+  app_config_link_root:
+    description: Root directory on the host where app config links are stored
+    value: ${{ steps.vars.outputs.app_config_link_root }}
+  nginx_conf_root:
+    description: Directory on the deploy host holding nginx server block configs
+    value: ${{ steps.vars.outputs.nginx_conf_root }}
+  envs:
+    description: >-
+      JSON array of the envs the branch is deployed to, each as
+      {"env_slug":"<env-slug>","project_name":"<repo-slug>-<env-slug>-<branch-slug>-web"}
+    value: ${{ steps.envs.outputs.envs }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve variables
+      id: vars
+      shell: bash
+      env:
+        SRC_REPO: ${{ github.repository }}
+        SRC_BRANCH: ${{ inputs.branch }}
+        DEPLOY_FILE_ROOT: ${{ inputs.web_deploy_file_root }}
+        BUNDLE_ROOT: ${{ inputs.bundle_root }}
+        BUNDLE_LINK_ROOT: ${{ inputs.bundle_link_root }}
+        APP_CONFIG_ROOT: ${{ inputs.app_config_root }}
+        APP_CONFIG_LINK_ROOT: ${{ inputs.app_config_link_root }}
+        NGINX_CONF_ROOT: ${{ inputs.nginx_conf_root }}
+
+        PATH_LIB: ${{ github.action_path }}/../../../../util/bash-libs/path.sh
+        STRING_LIB: ${{ github.action_path }}/../../../../util/bash-libs/string.sh
+        SEMVER_LIB: ${{ github.action_path }}/../../../../util/bash-libs/semver.sh
+        PLATFORM_LIB: ${{ github.action_path }}/../../bash-lib/platform.sh
+      run: |
+        source "$PATH_LIB"
+        source "$STRING_LIB"
+        source "$SEMVER_LIB"
+        source "$PLATFORM_LIB"
+
+        # Slugify the repo name
+        SRC_REPO="${SRC_REPO##*/}"
+        repo_slug=$(slugify SRC_REPO)
+        echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
+
+        # Slugify the branch name
+        branch_slug=$(slugify SRC_BRANCH)
+        echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the bundles
+        BUNDLE_ROOT=$(validate_abs_path BUNDLE_ROOT)
+        echo "bundle_root=${BUNDLE_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the bundle links
+        BUNDLE_LINK_ROOT=$(validate_abs_path BUNDLE_LINK_ROOT)
+        echo "bundle_link_root=${BUNDLE_LINK_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the app configurations
+        APP_CONFIG_ROOT=$(validate_abs_path APP_CONFIG_ROOT)
+        echo "app_config_root=${APP_CONFIG_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the app configuration links
+        APP_CONFIG_LINK_ROOT=$(validate_abs_path APP_CONFIG_LINK_ROOT)
+        echo "app_config_link_root=${APP_CONFIG_LINK_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the nginx configurations
+        NGINX_CONF_ROOT=$(validate_abs_path NGINX_CONF_ROOT)
+        echo "nginx_conf_root=${NGINX_CONF_ROOT}" >> "$GITHUB_OUTPUT"
+
+        # Validate path of the root directory for the deployment files
+        DEPLOY_FILE_ROOT=$(validate_abs_path DEPLOY_FILE_ROOT)        
+        echo "deploy_file_root=${DEPLOY_FILE_ROOT}" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve envs
+      id: envs
+      shell: bash
+      env:
+        DEPLOY_FILE_ROOT: ${{ steps.vars.outputs.deploy_file_root }}
+        REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
+        BRANCH_SLUG: ${{ steps.vars.outputs.branch_slug }}
+      run: |
+        # Each deployment lives in "${DEPLOY_FILE_ROOT}/<env_slug>/<branch_slug>",
+        # so the deployed envs are the parents of the matching branch directories.
+        # The trailing slash restricts the glob to directories.
+        shopt -s nullglob
+        env_slugs=()
+        for dir in "${DEPLOY_FILE_ROOT}"/*/"${BRANCH_SLUG}"/; do
+          env_slug="${dir#"${DEPLOY_FILE_ROOT}/"}"
+          env_slugs+=("${env_slug%%/*}")
+        done
+
+        envs="$(printf '%s\n' "${env_slugs[@]}" \
+          | jq -Rnc --arg repo_slug "${REPO_SLUG}" --arg branch_slug "${BRANCH_SLUG}" \
+            '[inputs | select(length > 0)
+              | {env_slug: ., project_name: "\($repo_slug)-\(.)-\($branch_slug)-web"}]')"
+
+        echo "Deployed envs of ${REPO_SLUG}/${BRANCH_SLUG}: ${envs}"
+        echo "envs=${envs}" >> "$GITHUB_OUTPUT"
