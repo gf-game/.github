@@ -65,10 +65,10 @@ jobs:
           nginx_conf_root: ${{ needs.resolve-metadata.outputs.nginx_conf_root }}
 
   undeploy-data-service:
-    needs: [resolve-metadata, undeploy]
+    needs: [resolve-metadata, undeploy-container-service]
     # Remove data only after the containers serving it are down.
-    # Still run when 'undeploy' was skipped because the branch has no deployed envs.
-    if: ${{ !cancelled() && needs.resolve-metadata.result == 'success' && needs.undeploy.result != 'failure' }}
+    # Still run when 'undeploy-container-service' was skipped because the branch has no deployed envs.
+    if: ${{ !cancelled() && needs.resolve-metadata.result == 'success' && needs.undeploy-container-service.result != 'failure' }}
     runs-on: [self-hosted, "${{inputs.host_label}}", Linux, docker]
     steps:
       - name: Undeploy bundles
