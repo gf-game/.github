@@ -1,0 +1,88 @@
+name: Undeploy web client on self-hosted machine
+
+on:
+  workflow_call:
+    inputs:
+      host_label:
+        description: Label of the host where the deployments exist
+        type: string
+        required: true      
+      branch:
+        description: Branch of the deployments to be torn down
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: undeploy-self-hosted-wg-web-client-${{ inputs.host_label }}-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-metadata:
+    runs-on: [self-hosted, "${{inputs.host_label}}", Linux, docker]
+    outputs:
+      repo_slug: ${{ steps.metadata.outputs.repo_slug }}
+      branch_slug: ${{ steps.metadata.outputs.branch_slug }}
+      bundle_root: ${{ steps.metadata.outputs.bundle_root }}
+      bundle_link_root: ${{ steps.metadata.outputs.bundle_link_root }}
+      app_config_root: ${{ steps.metadata.outputs.app_config_root }}
+      app_config_link_root: ${{ steps.metadata.outputs.app_config_link_root }}
+      nginx_conf_root: ${{ steps.metadata.outputs.nginx_conf_root }}
+      envs: ${{ steps.metadata.outputs.envs }}
+    steps:
+      - name: Resolve undeploy metadata
+        id: metadata
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/resolve-undeploy-metadata@d3360ecb0b1430d9ed515e2384b8e1003032be4b
+        with:
+          branch: ${{ inputs.branch }}
+          web_deploy_file_root: ${{ vars.WEB_DEPLOY_FILE_ROOT }}
+          bundle_root: ${{ vars.BUNDLE_ROOT }}
+          bundle_link_root: ${{ vars.BUNDLE_LINK_ROOT }}
+          app_config_root: ${{ vars.APP_CONFIG_ROOT }}
+          app_config_link_root: ${{ vars.APP_CONFIG_LINK_ROOT }}
+          nginx_conf_root: ${{ vars.NGINX_CONF_ROOT }}
+
+  undeploy-container-service:
+    needs: resolve-metadata
+    # An empty matrix fails the job, so skip when the branch isn't deployed anywhere
+    if: needs.resolve-metadata.outputs.envs != '[]'
+    runs-on: [self-hosted, "${{inputs.host_label}}", Linux, docker]
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(needs.resolve-metadata.outputs.envs) }}
+    steps:
+      - name: Undeploy
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy@353b119e4648405e4b6e906de7b8d25eecc32964
+        with:
+          project_name: ${{ matrix.env.project_name }}
+          repo_slug: ${{ needs.resolve-metadata.outputs.repo_slug }}
+          branch_slug: ${{ needs.resolve-metadata.outputs.branch_slug }}
+          env_slug: ${{ matrix.env.env_slug }}
+          nginx_conf_root: ${{ needs.resolve-metadata.outputs.nginx_conf_root }}
+
+  undeploy-data-service:
+    needs: [resolve-metadata, undeploy]
+    # Remove data only after the containers serving it are down.
+    # Still run when 'undeploy' was skipped because the branch has no deployed envs.
+    if: ${{ !cancelled() && needs.resolve-metadata.result == 'success' && needs.undeploy.result != 'failure' }}
+    runs-on: [self-hosted, "${{inputs.host_label}}", Linux, docker]
+    steps:
+      - name: Undeploy bundles
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy-bundle@e7dff4b9b9f6adf26dfba15cc636182b3f296906
+        with:
+          bundle_root: ${{ needs.resolve-metadata.outputs.bundle_root }}
+          bundle_link_root: ${{ needs.resolve-metadata.outputs.bundle_link_root }}
+          repo_slug: ${{ needs.resolve-metadata.outputs.repo_slug }}
+          branch_slug: ${{ needs.resolve-metadata.outputs.branch_slug }}
+
+      - name: Undeploy app configs
+        uses: gf-game/.github/.github/actions/wg-client/web/self-hosted/undeploy-app-config@01edd4e87159803029a98fa5eb5f787e6bfc5bca
+        with:
+          app_config_root: ${{ needs.resolve-metadata.outputs.app_config_root }}
+          app_config_link_root: ${{ needs.resolve-metadata.outputs.app_config_link_root }}
+          repo_slug: ${{ needs.resolve-metadata.outputs.repo_slug }}
+          branch_slug: ${{ needs.resolve-metadata.outputs.branch_slug }}
