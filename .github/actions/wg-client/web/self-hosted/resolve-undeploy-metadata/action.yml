@@ -50,7 +50,7 @@ outputs:
   envs:
     description: >-
       JSON array of the envs the branch is deployed to, each as
-      {"env_slug":"<env-slug>","project_name":"<repo-slug>-<env-slug>-<branch-slug>-web",
+      {"env_slug":"<env-slug>","project_name":"<repo-slug>_<env-slug>_<branch-slug>_web",
       "deploy_file_dir":"<web-deploy-file-root>/<env-slug>/<branch-slug>"}
     value: ${{ steps.envs.outputs.envs }}
 
@@ -120,26 +120,32 @@ runs:
         DEPLOY_FILE_ROOT: ${{ steps.vars.outputs.deploy_file_root }}
         REPO_SLUG: ${{ steps.vars.outputs.repo_slug }}
         BRANCH_SLUG: ${{ steps.vars.outputs.branch_slug }}
+        DOCKER_COMPOSE_LIB: ${{ github.action_path }}/../../bash-lib/docker-compose.sh
       run: |
+        source "$DOCKER_COMPOSE_LIB"
+
         # Each deployment lives in "${DEPLOY_FILE_ROOT}/<env_slug>/<branch_slug>",
         # so the deployed envs are the parents of the matching branch directories.
         # The trailing slash restricts the glob to directories.
         shopt -s nullglob
-        # Each entry is "<env_slug>\t<deploy_file_dir>"
+        # Each entry is "<env_slug>\t<project_name>\t<deploy_file_dir>"
         env_entries=()
         for dir in "${DEPLOY_FILE_ROOT}"/*/"${BRANCH_SLUG}"/; do
           deploy_file_dir="${dir%/}"
           env_slug="${dir#"${DEPLOY_FILE_ROOT}/"}"
-          env_entries+=("${env_slug%%/*}"$'\t'"${deploy_file_dir}")
+          env_slug="${env_slug%%/*}"
+          # Use the same function as the deploy side, so both agree on the name.
+          project_name=$(get_project_name "${REPO_SLUG}" "${env_slug}" "${BRANCH_SLUG}")
+          env_entries+=("${env_slug}"$'\t'"${project_name}"$'\t'"${deploy_file_dir}")
         done
 
         envs="$(printf '%s\n' "${env_entries[@]}" \
-          | jq -Rnc --arg repo_slug "${REPO_SLUG}" --arg branch_slug "${BRANCH_SLUG}" \
+          | jq -Rnc \
             '[inputs | select(length > 0) | split("\t")
               | {
                   env_slug: .[0],
-                  project_name: "\($repo_slug)-\(.[0])-\($branch_slug)-web",
-                  deploy_file_dir: .[1]
+                  project_name: .[1],
+                  deploy_file_dir: .[2]
                 }]')"
 
         echo "Deployed envs of ${REPO_SLUG}/${BRANCH_SLUG}: ${envs}"
