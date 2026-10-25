@@ -148,33 +148,14 @@ runs:
         BUILD_CONFIG_PATH: ${{ steps.env.outputs.build_config_path }}
         BUILD_LOG_PATH: ${{ steps.env.outputs.build_log_path }}
       run: |
+        exit_code=0
         "$COCOS_EXE" \
           --verbose \
           --project "$PROJECT_PATH" \
           --build "configPath=$BUILD_CONFIG_PATH" \
-          > "$BUILD_LOG_PATH" 2>&1 || true
+          2>&1 | tee "$BUILD_LOG_PATH" || exit_code=${PIPESTATUS[0]}
 
-    - name: Verify Cocos Creator build succeeded
-      shell: bash
-      env:
-        PLATFORM: ${{ steps.env.outputs.platform }}
-        BUILD_LOG_PATH: ${{ steps.env.outputs.build_log_path }}
-      run: |
-        pattern="build Task \($PLATFORM\) Finished in \((([0-9]+ hr )?([0-9]+ min )?[0-9]+ s|([0-9]+ hr )?[0-9]+ min|[0-9]+ hr)\)ms"
-
-        if [ ! -f "$BUILD_LOG_PATH" ]; then
-          echo "::error::$BUILD_LOG_PATH not found; Cocos Creator CLI may not have run."
-          exit 1
-        fi
-
-        if ! grep -Eqz "$pattern" "$BUILD_LOG_PATH"; then
-          echo "::error::Build success marker not found in Cocos Creator CLI log for platform '$PLATFORM'."
-          echo "----- $BUILD_LOG_PATH (tail) -----"
-          tail -n 100 "$BUILD_LOG_PATH"
-          exit 1
-        fi
-
-        echo "Found build success marker for platform '$PLATFORM'."
+        echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
 
     - name: Upload Cocos build log
       if: always()
@@ -184,6 +165,20 @@ runs:
         path: ${{ steps.env.outputs.build_log_path }}
         if-no-files-found: error
         retention-days: 7
+
+    - name: Verify Cocos Creator build succeeded
+      shell: bash
+      env:
+        PLATFORM: ${{ steps.env.outputs.platform }}
+        BUILD_EXIT_CODE: ${{ steps.cocos_build.outputs.exit_code }}
+      run: |
+        # Cocos Creator CLI exits with 36 on a successful build
+        if [ "$BUILD_EXIT_CODE" != "36" ]; then
+          echo "::error::Cocos Creator build failed with exit code $BUILD_EXIT_CODE"
+          exit 1
+        fi
+
+        echo "Cocos Creator build succeeded for platform '$PLATFORM'."
 
     - name: Upload remote bundle artifact
       id: upload_bundle
