@@ -65,7 +65,14 @@ runs:
     - name: Install dependencies
       shell: bash
       working-directory: ${{ inputs.client_dir }}
-      run: npm ci
+      env:
+        NODE_AUTH_TOKEN: ${{ github.token }}
+      run: |
+        # Point npm at a job-scoped npmrc so the token never lands in a file on the runner.
+        # The single quotes keep ${NODE_AUTH_TOKEN} literal; npm expands it at runtime.
+        npmrc="$RUNNER_TEMP/.npmrc"
+        printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' > "$npmrc"
+        NPM_CONFIG_USERCONFIG="$npmrc" npm ci
 
     - name: Compute env variables
       id: env
