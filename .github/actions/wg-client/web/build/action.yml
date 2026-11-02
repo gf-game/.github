@@ -26,6 +26,9 @@ inputs:
   image_name:
     description: "Image name (without registry prefix)"
     required: true
+  app_config_url:
+    description: "URL of the app-config service"
+    required: true
   extra_image_labels:
     description: "Additional docker image labels (newline-separated key=value pairs)"
     required: false
@@ -145,6 +148,33 @@ runs:
         path: ${{ steps.env.outputs.build_config_path }}
         if-no-files-found: error
         retention-days: 7
+
+    - name: Set up AppInfo
+      shell: bash
+      env:
+        PROJECT_PATH: ${{ inputs.client_dir }}
+        APP_SN: ${{ steps.env.outputs.app_sn }}
+        APP_VERSION: ${{ inputs.app_version }}
+        BRANCH_SHA: ${{ steps.resolve-branch-head.outputs.sha }}
+        APP_CONFIG_URL: ${{ inputs.app_config_url }}
+      run: |
+        app_info_dir="$PROJECT_PATH/assets/app-info"
+        mkdir -p "$app_info_dir"
+
+        # Strip a trailing slash so the config URL never contains "//".
+        jq -n \
+          --arg serial_num "$APP_SN" \
+          --arg version "$APP_VERSION" \
+          --arg commit_sha "$BRANCH_SHA" \
+          --arg config_url "${APP_CONFIG_URL%/}/$APP_SN" \
+          '{
+            serial_num: $serial_num,
+            version: $version,
+            commit_sha: $commit_sha,
+            config_url: $config_url
+          }' > "$app_info_dir/app-info.json"
+
+        cat "$app_info_dir/app-info.json"
 
     - name: Build with Cocos Creator CLI
       id: cocos_build
