@@ -80,19 +80,18 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         ENV_NAME: ${{ inputs.env_name }}
         DEPLOY_FILE_ROOT: ${{ inputs.deploy_file_root }}
+        STRING_LIB: ${{ github.action_path }}/../../util/bash-libs/string.sh
       run: |
-        branch_slug="$(echo "${BRANCH_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
-        repo_slug="$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+        source "$STRING_LIB"
 
-        # An empty slug would make deploy_file_dir/project_name collapse onto
-        # a path/name shared by every other branch with an empty slug,
-        # letting unrelated deployments silently overwrite each other's
-        # compose files and fight over the same Compose project, so refuse
-        # to proceed rather than risk that.
-        if [ -z "${branch_slug}" ] || [ -z "${repo_slug}" ]; then
-          echo "::error::Computed an empty slug (branch_slug='${branch_slug}', repo_slug='${repo_slug}') from branch='${BRANCH_NAME}' repo='${GITHUB_REPOSITORY}'"
-          exit 1
-        fi
+        # slugify fails on an empty slug, which would otherwise make
+        # deploy_file_dir/project_name collapse onto a path/name shared by
+        # every other branch with an empty slug, letting unrelated deployments
+        # silently overwrite each other's compose files and fight over the
+        # same Compose project.
+        branch_slug=$(slugify BRANCH_NAME)
+        REPO_NAME="${GITHUB_REPOSITORY##*/}"
+        repo_slug=$(slugify REPO_NAME)
 
         echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
         echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
