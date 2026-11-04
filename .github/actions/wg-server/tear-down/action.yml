@@ -30,14 +30,13 @@ runs:
       env:
         BRANCH_NAME: ${{ inputs.branch }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        STRING_LIB: ${{ github.action_path }}/../../util/bash-libs/string.sh
       run: |
-        branch_slug="$(echo "${BRANCH_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
-        repo_slug="$(echo "${GITHUB_REPOSITORY##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+        source "$STRING_LIB"
 
-        if [ -z "${branch_slug}" ] || [ -z "${repo_slug}" ]; then
-          echo "::error::Computed an empty slug (branch_slug='${branch_slug}', repo_slug='${repo_slug}') from branch='${BRANCH_NAME}' repo='${GITHUB_REPOSITORY}'"
-          exit 1
-        fi
+        branch_slug=$(slugify BRANCH_NAME)
+        REPO_NAME="${GITHUB_REPOSITORY##*/}"
+        repo_slug=$(slugify REPO_NAME)
 
         echo "branch_slug=${branch_slug}" >> "$GITHUB_OUTPUT"
         echo "repo_slug=${repo_slug}" >> "$GITHUB_OUTPUT"
