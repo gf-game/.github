@@ -1,0 +1,42 @@
+name: Fetch Cocos Creator project info
+description: Read info about the Cocos Creator project in a given directory. The calling job must check out the repository first
+
+inputs:
+  proj-dir:
+    description: Path of the Cocos Creator project directory, relative to the workspace root
+    required: true
+
+outputs:
+  version:
+    description: Project version, read from the 'version' field of the project's package.json
+    value: ${{ steps.read-package-json.outputs.version }}
+  cocos-version:
+    description: Cocos Creator version used by the project, read from the 'creator.version' field of the project's package.json
+    value: ${{ steps.read-package-json.outputs.cocos_version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read package.json
+      id: read-package-json
+      shell: bash
+      env:
+        PACKAGE_JSON: ${{ inputs.proj-dir }}/package.json
+        SEMVER_LIB: ${{ github.action_path }}/../bash-libs/semver.sh
+      run: |
+        source "$SEMVER_LIB"
+
+        if [ ! -f "$PACKAGE_JSON" ]; then
+          echo "::error::$PACKAGE_JSON not found (did the job check out the repository?)" >&2
+          exit 1
+        fi
+
+        # '// empty' turns a missing field into an empty string, which validate_semver reports as not set.
+        version="$(jq -r '.version // empty' "$PACKAGE_JSON")"
+        validate_semver version
+
+        cocos_version="$(jq -r '.creator.version // empty' "$PACKAGE_JSON")"
+        validate_semver cocos_version
+
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "cocos_version=$cocos_version" >> "$GITHUB_OUTPUT"
