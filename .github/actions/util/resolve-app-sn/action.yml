@@ -1,0 +1,57 @@
+name: Resolve app SN
+description: >
+  Compute an app's serial number (SN): the sha256 hex digest of
+  '<repository>|<branch>|<cocos-version>|<platform>|<app-version>'.
+  The same inputs always give the same SN
+
+inputs:
+  repository:
+    description: Repository (owner/name) the app is built from
+    required: true
+  branch:
+    description: Bare name of the branch the app is built from (no 'refs/heads/' prefix)
+    required: true
+  cocos-version:
+    description: Cocos Creator version used to build the app (semantic version)
+    required: true
+  platform:
+    description: Build platform of the app (e.g. web-mobile)
+    required: true
+  app-version:
+    description: Application version (semantic version, e.g. 1.2.3)
+    required: true
+
+outputs:
+  value:
+    description: App SN, a 64-character lowercase sha256 hex digest
+    value: ${{ steps.resolve.outputs.value }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute app SN
+      id: resolve
+      shell: bash
+      env:
+        REPOSITORY: ${{ inputs.repository }}
+        BRANCH: ${{ inputs.branch }}
+        COCOS_VERSION: ${{ inputs.cocos-version }}
+        PLATFORM: ${{ inputs.platform }}
+        APP_VERSION: ${{ inputs.app-version }}
+        SEMVER_LIB: ${{ github.action_path }}/../bash-libs/semver.sh
+      run: |
+        source "$SEMVER_LIB"
+
+        for var_name in REPOSITORY BRANCH PLATFORM; do
+          if [ -z "${!var_name}" ]; then
+            echo "::error::${var_name} is not set" >&2
+            exit 1
+          fi
+        done
+        validate_semver COCOS_VERSION
+        validate_semver APP_VERSION
+
+        # The values are hashed exactly as given: changing the format changes every app SN.
+        app_sn="$(printf '%s' "${REPOSITORY}|${BRANCH}|${COCOS_VERSION}|${PLATFORM}|${APP_VERSION}" | sha256sum | cut -d' ' -f1)"
+
+        echo "value=$app_sn" >> "$GITHUB_OUTPUT"
