@@ -84,11 +84,8 @@ runs:
       env:
         REGISTRY: ghcr.io
         PLATFORM: web-mobile
-        REPO_ID: ${{ github.repository }}
-        BRANCH_NAME: ${{ steps.resolve-branch-head.outputs.branch_name }}
         BRANCH_SHA: ${{ steps.resolve-branch-head.outputs.sha }}
         BUILD_ENV: ${{ inputs.build_env }}
-        APP_VERSION: ${{ inputs.app_version }}
         CLIENT_DIR: ${{ inputs.client_dir }}
         SEMVER_LIB: ${{ github.action_path }}/../../../util/bash-libs/semver.sh
         STRING_LIB: ${{ github.action_path }}/../../../util/bash-libs/string.sh
@@ -96,14 +93,11 @@ runs:
         source "$SEMVER_LIB"
         source "$STRING_LIB"
 
-        validate_semver APP_VERSION
-
         short_sha="${BRANCH_SHA:0:7}"
         build_env_slug="$(slugify BUILD_ENV)"
         image_tag="$PLATFORM-$build_env_slug-$short_sha"
         cocos_version="$(jq -r '.creator.version' package.json)"
         validate_semver cocos_version
-        app_sn="$(printf '%s' "${REPO_ID}|${BRANCH_NAME}|${cocos_version}|${PLATFORM}|${APP_VERSION}" | sha256sum | cut -d' ' -f1)"
 
         echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
         echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
@@ -118,7 +112,16 @@ runs:
         echo "remote_bundle_dir=$CLIENT_DIR/build/$PLATFORM/remote" >> "$GITHUB_OUTPUT"
         echo "cocos_version=$cocos_version" >> "$GITHUB_OUTPUT"
         echo "cocos_exe=C:\\ProgramData\\cocos\\editors\\Creator\\$cocos_version\\CocosCreator.exe" >> "$GITHUB_OUTPUT"
-        echo "app_sn=$app_sn" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve app SN
+      id: app_sn
+      uses: gf-game/.github/.github/actions/util/resolve-app-sn@cd925815cc2ea31c72f036289df7e7ca87bc8e23
+      with:
+        repository: ${{ github.repository }}
+        branch: ${{ steps.resolve-branch-head.outputs.branch_name }}
+        cocos-version: ${{ steps.env.outputs.cocos_version }}
+        platform: ${{ steps.env.outputs.platform }}
+        app-version: ${{ inputs.app_version }}
 
     - name: Create Cocos build config
       id: build_config
@@ -153,7 +156,7 @@ runs:
       shell: bash
       env:
         PROJECT_PATH: ${{ inputs.client_dir }}
-        APP_SN: ${{ steps.env.outputs.app_sn }}
+        APP_SN: ${{ steps.app_sn.outputs.value }}
         APP_VERSION: ${{ inputs.app_version }}
         BRANCH_SHA: ${{ steps.resolve-branch-head.outputs.sha }}
         APP_CONFIG_URL: ${{ inputs.app_config_url }}
@@ -264,7 +267,7 @@ runs:
           build.env=${{ inputs.build_env }}
           build.debug=${{ inputs.debug }}
           app.version=${{ inputs.app_version }}
-          app.sn=${{ steps.env.outputs.app_sn }}
+          app.sn=${{ steps.app_sn.outputs.value }}
 
     - name: Build and push client image
       uses: docker/build-push-action@v6
