@@ -1,0 +1,29 @@
+name: Slugify
+description: Turn a string into a slug using the shared slugify function from bash-libs/string.sh
+
+inputs:
+  input:
+    description: String to slugify
+    required: true
+
+outputs:
+  slug:
+    description: Slug of the input. Lowercase letters/digits separated by single hyphens, with a '-<hash>' suffix appended when the conversion changed the original value
+    value: ${{ steps.slugify.outputs.slug }}
+
+runs:
+  using: composite
+  steps:
+    - name: Slugify input
+      id: slugify
+      shell: bash
+      env:
+        INPUT: ${{ inputs.input }}
+        STRING_LIB: ${{ github.action_path }}/../bash-libs/string.sh
+      run: |
+        source "$STRING_LIB"
+
+        # slugify fails on an empty slug; the assignment carries its exit status, so the step fails too.
+        slug=$(slugify INPUT)
+
+        echo "slug=${slug}" >> "$GITHUB_OUTPUT"
