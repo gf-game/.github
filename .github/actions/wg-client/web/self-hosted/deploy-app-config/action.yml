@@ -88,9 +88,12 @@ runs:
         game_server_url="${game_server_url//<env-name>/${ENV_SLUG}}"
         game_server_url=$(validate_http_url game_server_url)
 
-        # Assemble and validate bundle-cdn url
-        bundle_cdn_url="${BUNDLE_CDN_URL//<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}}"
-        bundle_cdn_url=$(validate_http_url bundle_cdn_url)
+        # Assemble and validate bundle-cdn url only when a bundle artifact is present
+        bundle_cdn_url=""
+        if [[ -n "${BUNDLE_ARTIFACT_NAME}" ]]; then
+          bundle_cdn_url="${BUNDLE_CDN_URL//<bundle-registry-sn>/${BUNDLE_REGISTRY_SN}}"
+          bundle_cdn_url=$(validate_http_url bundle_cdn_url)
+        fi
 
         # Make the app config directory
         app_config_dir=$(make_app_config_dir "${APP_CONFIG_ROOT}" "${REPO_SLUG}" "${BRANCH_SLUG}" "${COCOS_VERSION}" "${PLATFORM}" "${APP_VERSION}")
