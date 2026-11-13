@@ -1,0 +1,48 @@
+name: Resolve AppInfo
+description: Compose the AppInfo JSON that is bundled into the client build
+
+inputs:
+  app-sn:
+    description: App serial number (SN)
+    required: true
+  app-version:
+    description: Application version (semantic version, e.g. 1.2.3)
+    required: true
+  commit-sha:
+    description: Commit sha the app is built from
+    required: true
+  app-config-url:
+    description: Base URL of the app-config service; the app SN is appended to it
+    required: true
+
+outputs:
+  value:
+    description: AppInfo as compact JSON
+    value: ${{ steps.resolve.outputs.value }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compose AppInfo
+      id: resolve
+      shell: bash
+      env:
+        APP_SN: ${{ inputs.app-sn }}
+        APP_VERSION: ${{ inputs.app-version }}
+        COMMIT_SHA: ${{ inputs.commit-sha }}
+        APP_CONFIG_URL: ${{ inputs.app-config-url }}
+      run: |
+        # Strip a trailing slash so the config URL never contains "//".
+        app_info="$(jq -cn \
+          --arg serial_num "$APP_SN" \
+          --arg version "$APP_VERSION" \
+          --arg commit_sha "$COMMIT_SHA" \
+          --arg config_url "${APP_CONFIG_URL%/}/$APP_SN" \
+          '{
+            serial_num: $serial_num,
+            version: $version,
+            commit_sha: $commit_sha,
+            config_url: $config_url
+          }')"
+
+        echo "value=$app_info" >> "$GITHUB_OUTPUT"
