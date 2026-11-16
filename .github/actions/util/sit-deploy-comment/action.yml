@@ -1,0 +1,184 @@
+name: Update SIT deployment comment
+description: >-
+  Creates or updates the single PR comment that shows the progress and
+  result of the SIT deployment (deploy-sit.yml). Every update replaces the
+  whole comment, so it always shows the latest state.
+
+inputs:
+  stage:
+    description: >-
+      1-based index of the current stage (see STAGES below). Stages before it
+      are shown as done, stages after it as pending. Ignored when state is
+      'success'.
+    required: false
+    default: '1'
+  state:
+    description: "State of the current stage: in_progress, success, failure or cancelled."
+    required: true
+  details:
+    description: Markdown shown below the stage table (e.g. the app info or the errors).
+    required: false
+    default: ''
+  pr-number:
+    description: >-
+      Number of the PR to comment on. Defaults to the PR of the triggering
+      event (pull_request, pull_request_target or a PR's issue_comment).
+      Required for other events such as workflow_dispatch.
+    required: false
+    default: ''
+  sha:
+    description: >-
+      Commit that is being deployed, shown in the comment footer. Defaults to
+      the PR head of a pull_request event, the head of a workflow_run event,
+      the current PR head for issue_comment, and github.sha otherwise.
+    required: false
+    default: ''
+  token:
+    description: Token used to read and write PR comments. Needs pull-requests write.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Upsert SIT deployment comment
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        STAGE: ${{ inputs.stage }}
+        STATE: ${{ inputs.state }}
+        DETAILS: ${{ inputs.details }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        SHA: ${{ inputs.sha }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          // Same marker as undeploy-sit.yml, which deletes this comment.
+          const marker = '<!-- sit-app-info -->';
+          // Keep in sync with the stage mapping in deploy-sit.yml (report-result).
+          const STAGES = [
+            'Resolve deployment environments',
+            'Build server images',
+            'Deploy server',
+            'Deploy app config',
+          ];
+          const HEADINGS = {
+            in_progress: '🚧 SIT deployment in progress',
+            success: '✅ SIT deployed',
+            failure: '❌ SIT deployment failed',
+            cancelled: '⚪ SIT deployment cancelled',
+          };
+          const CURRENT_ICONS = { in_progress: '⏳', failure: '❌', cancelled: '⚪' };
+
+          const state = process.env.STATE;
+          if (!HEADINGS[state]) {
+            core.setFailed(`Unknown state '${state}'.`);
+            return;
+          }
+          const stage = Number(process.env.STAGE);
+          if (state !== 'success' && !(Number.isInteger(stage) && stage >= 1 && stage <= STAGES.length)) {
+            core.setFailed(`Invalid stage '${process.env.STAGE}': expected an integer from 1 to ${STAGES.length}.`);
+            return;
+          }
+          const current = state === 'success' ? STAGES.length + 1 : stage;
+
+          const rows = STAGES.map((name, i) => {
+            const n = i + 1;
+            const icon = n < current ? '✅' : n === current ? CURRENT_ICONS[state] : '⬜';
+            return `| ${icon} | ${name} |`;
+          });
+
+          const { owner, repo } = context.repo;
+          const { payload } = context;
+          const prInput = process.env.PR_NUMBER.trim();
+          if (prInput && !/^[1-9]\d*$/.test(prInput)) {
+            core.setFailed(`Invalid pr-number '${prInput}': expected a positive integer.`);
+            return;
+          }
+          const issue_number = Number(prInput)
+            || payload.pull_request?.number
+            || (payload.issue?.pull_request ? payload.issue.number : 0);
+          if (!issue_number) {
+            core.setFailed(
+              `No PR to comment on: event '${context.eventName}' has no pull request; ` +
+              'pass the pr-number input.'
+            );
+            return;
+          }
+
+          // The deployed commit, not the PR's current head, which may have moved on since.
+          let sha = process.env.SHA.trim();
+          if (!sha) {
+            if (payload.pull_request?.number === issue_number) {
+              sha = payload.pull_request.head.sha;
+            } else if (payload.workflow_run) {
+              sha = payload.workflow_run.head_sha;
+            } else if (context.eventName === 'issue_comment') {
+              // github.sha is the default branch here; the PR head is the best guess.
+              sha = (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data.head.sha;
+            } else {
+              sha = context.sha;
+            }
+          }
+
+          const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+          const attempt = process.env.GITHUB_RUN_ATTEMPT;
+          const header = [
+            marker,
+            `### ${HEADINGS[state]}`,
+            '',
+            '| | Stage |',
+            '|---|---|',
+            ...rows,
+          ].join('\n');
+          const footer = `_Commit \`${sha.slice(0, 7)}\` · [run #${context.runNumber} (attempt ${attempt})](${runUrl}) · updated ${new Date().toISOString()}_`;
+
+          // GitHub rejects comments longer than 65536 characters. Only the details can
+          // get that long, so trim them and keep the header and footer intact.
+          const notice = `\n\n…truncated, see the [run](${runUrl}) for the full log.`;
+          // 65000 leaves room for the closing fence and the joining newlines.
+          const budget = 65000 - header.length - footer.length - notice.length;
+          let details = process.env.DETAILS.trim();
+          if (details.length > budget) {
+            details = details.slice(0, budget);
+            // Don't leave half of a surrogate pair (e.g. an emoji) at the end.
+            if (/[\uD800-\uDBFF]$/.test(details)) details = details.slice(0, -1);
+            // Close a code fence the cut left open, so the notice isn't swallowed by it.
+            let openFence = null;
+            for (const line of details.split('\n')) {
+              // A fence is indented by at most 3 spaces (more makes it indented code).
+              const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+              if (!match) continue;
+              const [, fence, rest] = match;
+              if (!openFence) openFence = fence;
+              // A closing fence has nothing but spaces after it; ```js inside a block is content.
+              else if (fence[0] === openFence[0] && fence.length >= openFence.length && !rest.trim()) openFence = null;
+            }
+            if (openFence) details += `\n${openFence}`;
+            details += notice;
+          }
+
+          const body = [
+            header,
+            ...(details ? ['', details] : []),
+            '',
+            footer,
+          ].join('\n');
+
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+          // Only reuse a comment posted by this token's identity. A user token (PAT)
+          // can tell us its login; GITHUB_TOKEN and other GitHub App tokens get a 403
+          // on this endpoint, and their comments are always posted by a Bot.
+          let selfLogin = null;
+          try {
+            selfLogin = (await github.rest.users.getAuthenticated()).data.login;
+          } catch (error) {
+            if (error.status !== 403) throw error;
+          }
+          const isOwn = c => selfLogin ? c.user?.login === selfLogin : c.user?.type === 'Bot';
+          const existing = comments.find(c => isOwn(c) && c.body?.includes(marker));
+
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
